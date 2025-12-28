@@ -11,9 +11,6 @@ import yaml
 # Supported Whisper models (large-v3 and turbo only)
 SUPPORTED_WHISPER_MODELS = ["large-v3", "large-v3-turbo"]
 
-# Supported diarization backends
-SUPPORTED_DIARIZATION_BACKENDS = ["pyannote", "speechbrain"]
-
 
 @dataclass
 class STTConfig:
@@ -28,34 +25,10 @@ class STTConfig:
 
 
 @dataclass
-class DiarizationConfig:
-    """Speaker diarization settings."""
-
-    enabled: bool = True
-    backend: str = "pyannote"  # "pyannote" | "speechbrain"
-    model_name: str = "pyannote/speaker-diarization-3.1"
-    device: str = "cuda"
-    min_speakers: int = 1
-    max_speakers: int = 10
-    hf_token: str = ""
-
-    def get_hf_token(self) -> str | None:
-        """Get HF token from config or environment."""
-        token = self.hf_token or os.environ.get("HF_TOKEN", "")
-        return token if token else None
-
-
-@dataclass
 class SpeechConfig:
-    """Combined speech processing settings (STT + Diarization)."""
+    """Speech processing settings (STT only)."""
 
     stt: STTConfig = field(default_factory=STTConfig)
-    diarization: DiarizationConfig = field(default_factory=DiarizationConfig)
-
-
-# Legacy aliases for backward compatibility
-WhisperXDiarizationConfig = DiarizationConfig
-WhisperXConfig = STTConfig
 
 
 @dataclass
@@ -164,7 +137,6 @@ class SubtitleConfig:
 
     default_format: str = "srt"
     include_original: bool = False
-    include_speaker: bool = False
     ass: SubtitleASSConfig = field(default_factory=SubtitleASSConfig)
 
 
@@ -231,14 +203,6 @@ class AppConfig:
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
     segment: SegmentConfig = field(default_factory=SegmentConfig)
     ui: UIConfig = field(default_factory=UIConfig)
-    speaker_styles: dict[str, dict[str, Any]] = field(default_factory=dict)
-
-    # Legacy property for backward compatibility
-    @property
-    def whisperx(self) -> STTConfig:
-        """Deprecated: use speech.stt instead."""
-        return self.speech.stt
-
 
 class ConfigManager:
     """Configuration file manager."""
@@ -296,46 +260,33 @@ class ConfigManager:
         """Parse config dictionary into AppConfig."""
         app_data = data.get("app", {})
 
-        # Parse speech config (new structure)
+        # Parse speech config
         speech_data = data.get("speech", {})
         if speech_data:
-            # New config format
             stt_data = speech_data.get("stt", {})
-            diarization_data = speech_data.get("diarization", {})
-            speech_config = SpeechConfig(
-                stt=STTConfig(**stt_data),
-                diarization=DiarizationConfig(**diarization_data),
-            )
+            speech_config = SpeechConfig(stt=STTConfig(**stt_data))
         else:
-            # Legacy whisperx config format - migrate
-            whisperx_data = data.get("whisperx", {})
-            if whisperx_data:
-                diarization_data = whisperx_data.pop("diarization", {})
-                # Map old fields to new structure
+            # Legacy config format - migrate
+            legacy_data = data.get("whisperx", {})
+            if legacy_data:
                 stt_config = STTConfig(
-                    model_size=whisperx_data.get("model_size", "large-v3-turbo"),
-                    device=whisperx_data.get("device", "cuda"),
-                    compute_type=whisperx_data.get("compute_type", "float16"),
-                    language=whisperx_data.get("language", "ja"),
+                    model_size=legacy_data.get("model_size", "large-v3-turbo"),
+                    device=legacy_data.get("device", "cuda"),
+                    compute_type=legacy_data.get("compute_type", "float16"),
+                    language=legacy_data.get("language", "ja"),
                     beam_size=5,
                     vad_filter=True,
                 )
-                diar_config = DiarizationConfig(
-                    enabled=diarization_data.get("enabled", True),
-                    backend="pyannote",
-                    device=whisperx_data.get("device", "cuda"),
-                    min_speakers=diarization_data.get("min_speakers", 1),
-                    max_speakers=diarization_data.get("max_speakers", 10),
-                    hf_token=whisperx_data.get("hf_token", ""),
-                )
-                speech_config = SpeechConfig(stt=stt_config, diarization=diar_config)
+                speech_config = SpeechConfig(stt=stt_config)
             else:
                 speech_config = SpeechConfig()
 
         translation_config = TranslationConfig(**data.get("translation", {}))
 
         subtitle_data = data.get("subtitle", {})
-        ass_data = subtitle_data.pop("ass", {})
+        ass_data = subtitle_data.pop("ass", {}) if "ass" in subtitle_data else {}
+        # Remove legacy fields
+        subtitle_data.pop("include_speaker", None)
         subtitle_config = SubtitleConfig(
             **subtitle_data,
             ass=SubtitleASSConfig(**ass_data),
@@ -356,7 +307,6 @@ class ConfigManager:
             processing=processing_config,
             segment=segment_config,
             ui=ui_config,
-            speaker_styles=data.get("speaker_styles", {}),
         )
 
     def _to_dict(self, config: AppConfig) -> dict:
@@ -379,15 +329,6 @@ class ConfigManager:
                     "beam_size": config.speech.stt.beam_size,
                     "vad_filter": config.speech.stt.vad_filter,
                 },
-                "diarization": {
-                    "enabled": config.speech.diarization.enabled,
-                    "backend": config.speech.diarization.backend,
-                    "model_name": config.speech.diarization.model_name,
-                    "device": config.speech.diarization.device,
-                    "min_speakers": config.speech.diarization.min_speakers,
-                    "max_speakers": config.speech.diarization.max_speakers,
-                    "hf_token": config.speech.diarization.hf_token,
-                },
             },
             "translation": {
                 "model_preset": config.translation.model_preset,
@@ -403,7 +344,6 @@ class ConfigManager:
             "subtitle": {
                 "default_format": config.subtitle.default_format,
                 "include_original": config.subtitle.include_original,
-                "include_speaker": config.subtitle.include_speaker,
                 "ass": {
                     "video_width": config.subtitle.ass.video_width,
                     "video_height": config.subtitle.ass.video_height,
@@ -437,7 +377,6 @@ class ConfigManager:
                 "remember_position": config.ui.remember_position,
                 "hide_warnings": config.ui.hide_warnings,
             },
-            "speaker_styles": config.speaker_styles,
         }
 
     def validate(self) -> list[str]:
@@ -466,22 +405,6 @@ class ConfigManager:
         valid_devices = ["cuda", "cpu"]
         if config.speech.stt.device not in valid_devices:
             errors.append(f"Invalid STT device: {config.speech.stt.device}")
-
-        # Check diarization settings
-        if config.speech.diarization.enabled:
-            if config.speech.diarization.backend not in SUPPORTED_DIARIZATION_BACKENDS:
-                errors.append(
-                    f"Invalid diarization backend: {config.speech.diarization.backend}. "
-                    f"Supported: {SUPPORTED_DIARIZATION_BACKENDS}"
-                )
-
-            # PyAnnote requires HF token
-            if config.speech.diarization.backend == "pyannote":
-                if not config.speech.diarization.get_hf_token():
-                    errors.append("HF token required for pyannote speaker diarization")
-
-            if config.speech.diarization.device not in valid_devices:
-                errors.append(f"Invalid diarization device: {config.speech.diarization.device}")
 
         # Check subtitle format
         valid_formats = ["srt", "ass", "vtt"]

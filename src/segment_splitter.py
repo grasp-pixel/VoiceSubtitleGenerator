@@ -35,7 +35,7 @@ class SegmentSplitter:
     """
     Splits long segments into smaller ones for better subtitle readability.
 
-    Uses word-level timing from WhisperX to create accurate timing
+    Uses word-level timing from faster-whisper to create accurate timing
     for split segments.
     """
 
@@ -147,8 +147,6 @@ class SegmentSplitter:
                         end=end_time,
                         original_text=sub_text,
                         translated_text="",  # Will be translated later
-                        speaker_id=segment.speaker_id,
-                        speaker_name=segment.speaker_name,
                         words=self._extract_words(words, start_time, end_time),
                     )
                     segments.append(new_seg)
@@ -169,8 +167,6 @@ class SegmentSplitter:
                         end=end_time,
                         original_text=sub_text,
                         translated_text="",
-                        speaker_id=segment.speaker_id,
-                        speaker_name=segment.speaker_name,
                         words=self._extract_words(words, start_time, end_time),
                     )
                     segments.append(new_seg)
@@ -227,8 +223,6 @@ class SegmentSplitter:
                 end=seg_words[-1].end,
                 original_text=sub_text,
                 translated_text="",
-                speaker_id=segment.speaker_id,
-                speaker_name=segment.speaker_name,
                 words=seg_words,
             )
             segments.append(new_seg)
@@ -261,8 +255,6 @@ class SegmentSplitter:
                 end=segment.start + (i + 1) * time_per_segment,
                 original_text=sub_text,
                 translated_text="",
-                speaker_id=segment.speaker_id,
-                speaker_name=segment.speaker_name,
                 words=[],
             )
             segments.append(new_seg)
@@ -419,10 +411,6 @@ class SegmentMerger:
 
     def _can_merge(self, seg1: Segment, seg2: Segment) -> bool:
         """Check if two segments can be merged."""
-        # Must be same speaker
-        if seg1.speaker_id != seg2.speaker_id:
-            return False
-
         gap = seg2.start - seg1.end
 
         # Check if first segment is an incomplete sentence
@@ -451,8 +439,6 @@ class SegmentMerger:
             end=seg2.end,
             original_text=seg1.original_text + seg2.original_text,
             translated_text="",  # Will be translated later
-            speaker_id=seg1.speaker_id,
-            speaker_name=seg1.speaker_name,
             words=combined_words,
         )
 

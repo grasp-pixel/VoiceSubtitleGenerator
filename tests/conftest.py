@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from src.config import AppConfig, ConfigManager
-from src.models import Segment, SpeakerMapping, Word
+from src.models import Segment, Word
 
 
 @pytest.fixture
@@ -25,16 +25,13 @@ def sample_config_dict() -> dict:
             "path": "./models",
             "auto_download": True,
         },
-        "whisperx": {
-            "model_size": "large-v3",
-            "device": "cuda",
-            "compute_type": "float16",
-            "batch_size": 16,
-            "hf_token": "",
-            "diarization": {
-                "enabled": True,
-                "min_speakers": 1,
-                "max_speakers": 10,
+        "speech": {
+            "stt": {
+                "model_size": "large-v3",
+                "device": "cuda",
+                "compute_type": "float16",
+                "beam_size": 5,
+                "vad_filter": True,
             },
         },
         "translation": {
@@ -46,7 +43,6 @@ def sample_config_dict() -> dict:
         },
         "subtitle": {
             "default_format": "srt",
-            "include_speaker": True,
             "include_original": False,
             "ass": {
                 "video_width": 1920,
@@ -102,8 +98,6 @@ def sample_segments() -> list[Segment]:
             end=2.5,
             original_text="お前、何やってんだよ！",
             translated_text="너, 뭐 하는 거야!",
-            speaker_id="SPEAKER_00",
-            speaker_name="히로인",
             words=[
                 Word(word="お前", start=0.0, end=0.5),
                 Word(word="何", start=0.6, end=0.8),
@@ -115,8 +109,6 @@ def sample_segments() -> list[Segment]:
             end=5.5,
             original_text="ちょっと待ってくれ",
             translated_text="잠깐만 기다려줘",
-            speaker_id="SPEAKER_01",
-            speaker_name="주인공",
             words=[
                 Word(word="ちょっと", start=3.0, end=3.5),
                 Word(word="待ってくれ", start=3.6, end=5.0),
@@ -127,31 +119,12 @@ def sample_segments() -> list[Segment]:
             end=9.0,
             original_text="わかった、行こう",
             translated_text="알았어, 가자",
-            speaker_id="SPEAKER_00",
-            speaker_name="히로인",
             words=[
                 Word(word="わかった", start=6.0, end=7.0),
                 Word(word="行こう", start=7.5, end=8.5),
             ],
         ),
     ]
-
-
-@pytest.fixture
-def sample_speaker_mapping() -> dict[str, SpeakerMapping]:
-    """Sample speaker mapping."""
-    return {
-        "SPEAKER_00": SpeakerMapping(
-            speaker_id="SPEAKER_00",
-            name="히로인",
-            color="FF69B4",
-        ),
-        "SPEAKER_01": SpeakerMapping(
-            speaker_id="SPEAKER_01",
-            name="주인공",
-            color="00BFFF",
-        ),
-    }
 
 
 @pytest.fixture

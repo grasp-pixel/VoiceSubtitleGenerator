@@ -1,7 +1,6 @@
 """Voice Subtitle Generator - Core Package.
 
-A tool for generating Korean subtitles from Japanese audio files
-with speaker diarization support.
+A tool for generating Korean subtitles from Japanese audio files.
 """
 
 # Apply compatibility patches before any other imports
@@ -12,7 +11,6 @@ from .ass_styler import (
     ASSStyle,
     ASSStyler,
     KeywordStyle,
-    SpeakerStyle,
     StylePreset,
     TextAlignment,
 )
@@ -27,7 +25,6 @@ from .audio_loader import AudioFormatError, AudioLoader
 from .config import (
     AppConfig,
     ConfigManager,
-    DiarizationConfig,
     SpeechConfig,
     STTConfig,
     SubtitleConfig,
@@ -48,7 +45,6 @@ from .exceptions import (
     ModelLoadError,
     ModelInitializationError,
     TranscriptionError,
-    DiarizationError,
     HFTokenError,
     TranslationError as TranslationExc,
     TranslatorNotInitializedError,
@@ -60,9 +56,6 @@ from .exceptions import (
     PipelineNotInitializedError,
     ProcessingCancelledError,
     ProcessingError,
-    SpeakerError,
-    SpeakerPresetNotFoundError,
-    SpeakerMappingError,
 )
 from .logging_config import (
     setup_logging,
@@ -78,13 +71,11 @@ from .models import (
     ProcessingStage,
     ProcessResult,
     Segment,
-    SpeakerMapping,
     SubtitleFormat,
     SubtitleStyle,
     Word,
 )
 from .pipeline import PipelineError, SubtitlePipeline
-from .speaker_manager import SpeakerManager
 from .speech_engine import SpeechEngine, SpeechEngineError
 from .subtitle_writer import SubtitleWriter, SubtitleWriterError
 from .translator import ModelNotFoundError, TranslationError, Translator
@@ -110,15 +101,12 @@ __all__ = [
     "Translator",
     "TranslationError",
     "ModelNotFoundError",
-    # Speaker
-    "SpeakerManager",
     # Subtitle
     "SubtitleWriter",
     "SubtitleWriterError",
     # Models
     "Segment",
     "Word",
-    "SpeakerMapping",
     "ProcessResult",
     "SubtitleStyle",
     "SubtitleFormat",
@@ -129,7 +117,6 @@ __all__ = [
     # Config
     "AppConfig",
     "ConfigManager",
-    "DiarizationConfig",
     "SpeechConfig",
     "STTConfig",
     "TranslationConfig",
@@ -149,7 +136,6 @@ __all__ = [
     "ModelLoadError",
     "ModelInitializationError",
     "TranscriptionError",
-    "DiarizationError",
     "HFTokenError",
     "TranslationExc",
     "TranslatorNotInitializedError",
@@ -161,9 +147,6 @@ __all__ = [
     "PipelineNotInitializedError",
     "ProcessingCancelledError",
     "ProcessingError",
-    "SpeakerError",
-    "SpeakerPresetNotFoundError",
-    "SpeakerMappingError",
     # Logging
     "setup_logging",
     "get_logger",
@@ -175,7 +158,6 @@ __all__ = [
     "ASSStyle",
     "ASSStyler",
     "KeywordStyle",
-    "SpeakerStyle",
     "StylePreset",
     "TextAlignment",
     # Audio Analysis

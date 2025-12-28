@@ -49,22 +49,12 @@ class Segment:
     end: float
     original_text: str
     translated_text: str = ""
-    speaker_id: str = "UNKNOWN"
-    speaker_name: str = ""
     words: list[Word] = field(default_factory=list)
-
-    # Future extensions
-    audio_position: str = "center"  # "left", "center", "right"
 
     @property
     def duration(self) -> float:
         """Segment duration in seconds."""
         return self.end - self.start
-
-    @property
-    def display_speaker(self) -> str:
-        """Get display name for speaker."""
-        return self.speaker_name if self.speaker_name else self.speaker_id
 
     def to_srt_timing(self) -> str:
         """Convert to SRT timing format."""
@@ -94,16 +84,6 @@ class Segment:
 
 
 @dataclass
-class SpeakerMapping:
-    """Speaker ID to character mapping."""
-
-    speaker_id: str
-    name: str
-    color: str = "FFFFFF"
-    style_preset: str | None = None
-
-
-@dataclass
 class AudioInfo:
     """Audio file metadata."""
 
@@ -122,7 +102,6 @@ class ProcessResult:
     audio_path: str
     output_path: str
     segments: list[Segment] = field(default_factory=list)
-    speakers: list[str] = field(default_factory=list)
     duration: float = 0.0
     error: str | None = None
 

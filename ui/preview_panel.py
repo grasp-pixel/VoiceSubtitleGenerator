@@ -56,7 +56,6 @@ class PreviewPanel:
     def __init__(
         self,
         parent: int | str,
-        on_speaker_map_click: Callable[[], None] | None = None,
         include_original: bool = False,
     ):
         """
@@ -64,11 +63,9 @@ class PreviewPanel:
 
         Args:
             parent: Parent container tag.
-            on_speaker_map_click: Callback for speaker mapping button.
             include_original: Whether to show original text in preview.
         """
         self.parent = parent
-        self.on_speaker_map_click = on_speaker_map_click
         self.include_original = include_original
 
         self._segments: list[Segment] = []
@@ -94,14 +91,6 @@ class PreviewPanel:
                     color=THEME.text_secondary,
                 )
 
-            with dpg.group(horizontal=True):
-                dpg.add_spacer(width=-1)
-                dpg.add_button(
-                    label="화자 매핑",
-                    callback=self._on_speaker_map_click,
-                    width=100,
-                )
-
             dpg.add_separator()
 
             # Segment list container
@@ -115,11 +104,6 @@ class PreviewPanel:
                     "완료된 파일을 선택하면 자막을 미리 볼 수 있습니다",
                     color=THEME.text_secondary,
                 )
-
-    def _on_speaker_map_click(self) -> None:
-        """Handle speaker map button click."""
-        if self.on_speaker_map_click:
-            self.on_speaker_map_click()
 
     def set_file(self, filename: str) -> None:
         """Set the current file name."""
@@ -166,15 +150,6 @@ class PreviewPanel:
                     segment.to_srt_timing(),
                     color=THEME.text_secondary,
                 )
-
-            # Speaker info
-            if segment.display_speaker and segment.display_speaker != "UNKNOWN":
-                speaker_text = f"[{segment.speaker_id}"
-                if segment.speaker_name and segment.speaker_name != segment.speaker_id:
-                    speaker_text += f" -> {segment.speaker_name}"
-                speaker_text += "]"
-
-                dpg.add_text(speaker_text, color=THEME.info)
 
             # Original text (Japanese) - only if include_original is enabled
             # Displayed in smaller font, muted gray color
@@ -562,12 +537,9 @@ class ProcessingPanel:
         dpg.set_value(self._audio_info_label, info)
         self._file_info["audio_duration"] = duration
 
-    def set_segment_info(self, count: int, speaker_count: int = 0) -> None:
+    def set_segment_info(self, count: int) -> None:
         """Set segment count information."""
-        if speaker_count > 0:
-            info = f"{count}개 ({speaker_count}명 화자)"
-        else:
-            info = f"{count}개"
+        info = f"{count}개"
         dpg.set_value(self._segment_info_label, info)
 
     def _update_speed_info(self, total_time: float) -> None:

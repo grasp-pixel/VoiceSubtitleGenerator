@@ -13,7 +13,6 @@ from src import (
     PipelineCallbacks,
     ProcessingStage,
     ProcessResult,
-    SpeakerMapping,
     SubtitlePipeline,
 )
 
@@ -28,7 +27,6 @@ from .file_list_panel import FileItem, FileListPanel
 from .model_dialog import ModelDialog
 from .preview_panel import LogPanel, PreviewPanel, ProcessingPanel
 from .settings_dialog import SettingsDialog
-from .speaker_dialog import SpeakerMappingDialog
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +58,11 @@ class MainWindow:
         self._pipeline = pipeline
         self._is_processing = False
         self._should_cancel = False
-        self._current_speaker_mapping: dict[str, SpeakerMapping] = {}
+
+        # Thread-safe pending files queue
+        self._pending_files: list[str] = []
+        self._pending_folders: list[str] = []
+        self._pending_lock = threading.Lock()
 
         # UI components
         self._file_list: FileListPanel | None = None
@@ -68,7 +70,6 @@ class MainWindow:
         self._processing_panel: ProcessingPanel | None = None
         self._log_panel: LogPanel | None = None
         self._settings_dialog: SettingsDialog | None = None
-        self._speaker_dialog: SpeakerMappingDialog | None = None
         self._model_dialog: ModelDialog | None = None
 
         # Status bar elements
@@ -119,7 +120,6 @@ class MainWindow:
             # Preview panel
             self._preview_panel = PreviewPanel(
                 parent=content_container,
-                on_speaker_map_click=self._on_speaker_map_click,
                 include_original=self.config.subtitle.include_original,
             )
 
@@ -130,9 +130,6 @@ class MainWindow:
         self._settings_dialog = SettingsDialog(
             self.config_manager,
             on_save=self._on_settings_save,
-        )
-        self._speaker_dialog = SpeakerMappingDialog(
-            on_apply=self._on_speaker_mapping_apply,
         )
         self._model_dialog = ModelDialog(config=self.config)
 
@@ -177,10 +174,6 @@ class MainWindow:
                 dpg.add_menu_item(
                     label="환경설정...",
                     callback=self._on_open_settings,
-                )
-                dpg.add_menu_item(
-                    label="화자 프리셋...",
-                    callback=self._on_speaker_map_click,
                 )
                 dpg.add_separator()
                 dpg.add_menu_item(
@@ -260,12 +253,6 @@ class MainWindow:
                 "번역: ---",
                 color=THEME.text_secondary,
             )
-            dpg.add_spacer(width=10)
-
-            self._status_labels["diarization"] = dpg.add_text(
-                "화자분리: ---",
-                color=THEME.text_secondary,
-            )
 
             dpg.add_spacer(width=-1)
 
@@ -291,24 +278,46 @@ class MainWindow:
         )
 
     def _add_files_to_queue(self, files: list[str]) -> None:
-        """Add files to the queue."""
-        for file_path in files:
-            if AudioLoader.is_supported(file_path):
-                self._file_list.add_file(file_path)
-
-        self._update_status()
+        """Add files to pending queue (thread-safe, called from file dialog thread)."""
+        logger.info(f"_add_files_to_queue called with {len(files)} files: {files}")
+        with self._pending_lock:
+            for file_path in files:
+                if AudioLoader.is_supported(file_path):
+                    self._pending_files.append(file_path)
+                    logger.info(f"Added to pending: {file_path}")
 
     def _add_folder_to_queue(self, folder: str) -> None:
-        """Add all audio files from folder to queue."""
+        """Add folder to pending queue (thread-safe, called from file dialog thread)."""
         if not folder:
             return
+        with self._pending_lock:
+            self._pending_folders.append(folder)
 
-        folder_path = Path(folder)
-        for ext in AudioLoader.supported_formats():
-            for file_path in folder_path.glob(f"*.{ext}"):
-                self._file_list.add_file(str(file_path))
+    def process_pending(self) -> None:
+        """Process pending files/folders from queue (call from main thread)."""
+        files_to_add: list[str] = []
+        folders_to_add: list[str] = []
 
-        self._update_status()
+        with self._pending_lock:
+            if self._pending_files:
+                files_to_add = self._pending_files.copy()
+                self._pending_files.clear()
+            if self._pending_folders:
+                folders_to_add = self._pending_folders.copy()
+                self._pending_folders.clear()
+
+        # Now add to UI (main thread)
+        for file_path in files_to_add:
+            self._file_list.add_file(file_path)
+
+        for folder in folders_to_add:
+            folder_path = Path(folder)
+            for ext in AudioLoader.supported_formats():
+                for file_path in folder_path.glob(f"*.{ext}"):
+                    self._file_list.add_file(str(file_path))
+
+        if files_to_add or folders_to_add:
+            self._update_status()
 
     def add_dropped_files(self, paths: list[str]) -> None:
         """
@@ -458,19 +467,6 @@ class MainWindow:
             dpg.set_value(self._status_labels["llm"], "번역: 로드됨")
             dpg.configure_item(self._status_labels["llm"], color=THEME.success)
 
-            if self._pipeline.speech_engine.diarization_available:
-                dpg.set_value(self._status_labels["diarization"], "화자분리: 켜짐")
-                dpg.configure_item(
-                    self._status_labels["diarization"], color=THEME.success
-                )
-                self._log_panel.info("화자 분리: 활성화")
-            else:
-                dpg.set_value(self._status_labels["diarization"], "화자분리: 꺼짐")
-                dpg.configure_item(
-                    self._status_labels["diarization"], color=THEME.warning
-                )
-                self._log_panel.warning("화자 분리: 비활성화")
-
             # Get files to process
             pending_files = self._file_list.get_pending_files()
             output_format = dpg.get_value(self._format_combo)
@@ -530,7 +526,6 @@ class MainWindow:
                     result = self._pipeline.process_file(
                         audio_path=item.path,
                         output_path=str(output_path),
-                        speaker_mapping=self._current_speaker_mapping or None,
                         output_format=output_format,
                         callbacks=callbacks,
                     )
@@ -539,17 +534,15 @@ class MainWindow:
                         self._file_list.update_status(
                             item, FileStatus.DONE, 1.0
                         )
-                        # Store processing result for preview/speaker mapping
-                        self._file_list.set_result(
-                            item, result.segments, result.speakers
-                        )
+                        # Store processing result for preview
+                        self._file_list.set_result(item, result.segments)
                         completed += 1
                         self._log_panel.success(
-                            f"완료: {len(result.segments)}개 구간, {len(result.speakers)}명 화자"
+                            f"완료: {len(result.segments)}개 구간"
                         )
                         # Update profiling info
                         self._processing_panel.set_segment_info(
-                            len(result.segments), len(result.speakers)
+                            len(result.segments)
                         )
                         if result.duration:
                             self._processing_panel.set_audio_info(
@@ -617,47 +610,12 @@ class MainWindow:
             self._pipeline.cleanup()
             self._pipeline = None
 
-    def _on_speaker_map_click(self) -> None:
-        """Handle speaker mapping click."""
-        selected = self._file_list.get_selected()
-
-        if selected is None:
-            show_message_box(
-                "파일 미선택",
-                "화자 매핑을 설정할 파일을 선택해주세요.",
-                "info",
-            )
-            return
-
-        # Get speakers from the processed file
-        if selected.status != FileStatus.DONE or not selected.speaker_ids:
-            show_message_box(
-                "처리 필요",
-                "화자 매핑을 설정하려면 먼저 파일을 처리해주세요.",
-                "info",
-            )
-            return
-
-        self._speaker_dialog.show(
-            speakers=selected.speaker_ids,
-            current_mapping=self._current_speaker_mapping,
-            filename=selected.filename,
-        )
-
-    def _on_speaker_mapping_apply(
-        self, mapping: dict[str, SpeakerMapping]
-    ) -> None:
-        """Handle speaker mapping applied."""
-        self._current_speaker_mapping = mapping
-        logger.info(f"Speaker mapping updated: {len(mapping)} speakers")
-
     def _on_about(self) -> None:
         """Show about dialog."""
         show_message_box(
             "정보",
             "음성 자막 생성기 v0.1.0\n\n"
-            "일본어 음성을 한국어 자막으로 변환\n"
-            "화자 분리 지원",
+            "일본어 음성을 한국어 자막으로 변환",
             "info",
         )
 

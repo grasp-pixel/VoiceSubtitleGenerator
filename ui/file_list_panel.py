@@ -25,14 +25,12 @@ class FileItem:
     path: str
     filename: str
     duration: float = 0.0
-    speakers: int = 0
     status: FileStatus = FileStatus.PENDING
     progress: float = 0.0
     error: str | None = None
 
     # Processing results
     segments: list["Segment"] = field(default_factory=list)
-    speaker_ids: list[str] = field(default_factory=list)
 
     # UI elements
     row_tag: int | str = 0
@@ -104,7 +102,6 @@ class FileListPanel:
                 dpg.add_table_column(label="상태", width_fixed=True, init_width_or_weight=60)
                 dpg.add_table_column(label="파일명", init_width_or_weight=200)
                 dpg.add_table_column(label="길이", width_fixed=True, init_width_or_weight=80)
-                dpg.add_table_column(label="화자", width_fixed=True, init_width_or_weight=60)
                 dpg.add_table_column(label="진행률", init_width_or_weight=150)
 
     def add_file(self, file_path: str, duration: float = 0.0) -> FileItem:
@@ -168,9 +165,6 @@ class FileListPanel:
 
             # Duration column
             dpg.add_text(format_duration(item.duration) if item.duration > 0 else "-")
-
-            # Speakers column
-            dpg.add_text(str(item.speakers) if item.speakers > 0 else "-")
 
             # Progress column
             item.progress_bar_tag = dpg.add_progress_bar(
@@ -248,11 +242,6 @@ class FileListPanel:
         if item.progress_bar_tag:
             dpg.set_value(item.progress_bar_tag, progress)
 
-    def update_speakers(self, item: FileItem, count: int) -> None:
-        """Update speaker count for a file."""
-        item.speakers = count
-        # Note: Would need to store speaker text tag to update
-
     def update_duration(self, item: FileItem, duration: float) -> None:
         """Update duration for a file."""
         item.duration = duration
@@ -262,7 +251,6 @@ class FileListPanel:
         self,
         item: FileItem,
         segments: list["Segment"],
-        speaker_ids: list[str],
     ) -> None:
         """
         Store processing result for a file.
@@ -270,11 +258,8 @@ class FileListPanel:
         Args:
             item: File item to update.
             segments: Processed segments.
-            speaker_ids: List of detected speaker IDs.
         """
         item.segments = segments
-        item.speaker_ids = speaker_ids
-        item.speakers = len(speaker_ids)
 
     def _update_count(self) -> None:
         """Update file count display."""

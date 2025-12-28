@@ -12,10 +12,8 @@ from .models import (
     ProcessingStage,
     ProcessResult,
     Segment,
-    SpeakerMapping,
 )
 from .segment_splitter import MergeConfig, SegmentMerger, SegmentSplitter, SplitConfig
-from .speaker_manager import SpeakerManager
 from .speech_engine import SpeechEngine
 from .subtitle_writer import SubtitleWriter
 from .translator import Translator
@@ -40,24 +38,20 @@ class SubtitlePipeline:
     def __init__(
         self,
         config: AppConfig | None = None,
-        hf_token: str | None = None,
     ):
         """
         Initialize pipeline.
 
         Args:
             config: Application configuration. Uses global config if None.
-            hf_token: HuggingFace token override.
         """
         self.config = config or get_config()
-        self.hf_token = hf_token or self.config.speech.diarization.get_hf_token()
 
         # Components (lazy initialized)
         self._audio_loader: AudioLoader | None = None
         self._speech_engine: SpeechEngine | None = None
         self._translator: Translator | None = None
         self._subtitle_writer: SubtitleWriter | None = None
-        self._speaker_manager: SpeakerManager | None = None
         self._segment_splitter: SegmentSplitter | None = None
         self._segment_merger: SegmentMerger | None = None
 
@@ -74,21 +68,13 @@ class SubtitlePipeline:
 
         logger.info("Initializing pipeline...")
 
-        # Initialize components that don't depend on models first
-        # Speaker manager (no dependencies)
-        self._speaker_manager = SpeakerManager()
-
         # Audio loader
         self._audio_loader = AudioLoader(
             target_sample_rate=self.config.processing.target_sample_rate,
             normalize=self.config.processing.normalize_audio,
         )
 
-        # Speech engine (STT + Diarization)
-        # Override HF token if provided
-        if self.hf_token:
-            self.config.speech.diarization.hf_token = self.hf_token
-
+        # Speech engine (STT)
         self._speech_engine = SpeechEngine.from_config(self.config.speech)
         self._speech_engine.load_models(self.config.speech.stt.language)
 
@@ -149,7 +135,6 @@ class SubtitlePipeline:
             self._audio_loader = None
 
         self._subtitle_writer = None
-        self._speaker_manager = None
         self._segment_splitter = None
         self._segment_merger = None
         self._initialized = False
@@ -160,7 +145,6 @@ class SubtitlePipeline:
         self,
         audio_path: str,
         output_path: str | None = None,
-        speaker_mapping: dict[str, SpeakerMapping] | None = None,
         output_format: str | None = None,
         callbacks: PipelineCallbacks | None = None,
     ) -> ProcessResult:
@@ -170,7 +154,6 @@ class SubtitlePipeline:
         Args:
             audio_path: Input audio file path.
             output_path: Output subtitle path. Auto-generated if None.
-            speaker_mapping: Speaker ID to name mapping.
             output_format: Output format (srt, ass, vtt).
             callbacks: Progress callbacks.
 
@@ -201,16 +184,13 @@ class SubtitlePipeline:
                 f"샘플레이트: {audio_info.sample_rate}Hz",
             )
 
-            # Stage 2: Transcription + Diarization
+            # Stage 2: Transcription
             self._notify_stage(callbacks, ProcessingStage.TRANSCRIBING)
             self._notify_log(callbacks, "음성 인식 시작...")
 
             segments = self._speech_engine.process(
                 audio_path,
                 language=self.config.speech.stt.language,
-                enable_diarization=self.config.speech.diarization.enabled,
-                min_speakers=self.config.speech.diarization.min_speakers,
-                max_speakers=self.config.speech.diarization.max_speakers,
                 progress_callback=lambda p: self._notify_progress(
                     callbacks, 0.1 + p * 0.4  # 10% - 50%
                 ),
@@ -218,17 +198,6 @@ class SubtitlePipeline:
 
             self._notify_log(callbacks, f"음성 인식 완료: {len(segments)}개 구간 검출")
             logger.info(f"Transcribed {len(segments)} segments")
-
-            # Extract speakers
-            speakers = self._speaker_manager.extract_speakers(segments)
-            if speakers:
-                self._notify_log(callbacks, f"화자 분리 완료: {len(speakers)}명 검출")
-            logger.info(f"Detected {len(speakers)} speakers")
-
-            # Apply speaker mapping
-            if speaker_mapping:
-                self._speaker_manager.apply_mapping(segments, speaker_mapping)
-                self._notify_log(callbacks, "화자 매핑 적용됨")
 
             # Split long segments
             if self.config.segment.enabled:
@@ -318,7 +287,6 @@ class SubtitlePipeline:
                 segments,
                 output_path,
                 format=output_format,
-                speaker_mapping=speaker_mapping,
             )
 
             # Done
@@ -333,7 +301,6 @@ class SubtitlePipeline:
                 audio_path=audio_path,
                 output_path=output_path,
                 segments=segments,
-                speakers=speakers,
                 duration=audio_info.duration,
             )
 
@@ -354,7 +321,6 @@ class SubtitlePipeline:
     def process_batch(
         self,
         files: list[tuple[str, str]] | list[str],
-        speaker_mapping: dict[str, SpeakerMapping] | None = None,
         output_format: str | None = None,
         output_dir: str | None = None,
         callbacks: BatchCallbacks | None = None,
@@ -364,7 +330,6 @@ class SubtitlePipeline:
 
         Args:
             files: List of (input, output) tuples or just input paths.
-            speaker_mapping: Speaker mapping to apply to all files.
             output_format: Output format for all files.
             output_dir: Output directory (used when files is list of strings).
             callbacks: Batch processing callbacks.
@@ -403,7 +368,6 @@ class SubtitlePipeline:
             result = self.process_file(
                 audio_path=audio_path,
                 output_path=output_path,
-                speaker_mapping=speaker_mapping,
                 output_format=output_format,
                 callbacks=callbacks.pipeline_callbacks if callbacks else None,
             )
@@ -420,46 +384,11 @@ class SubtitlePipeline:
 
         return results
 
-    def get_speakers(
-        self,
-        audio_path: str,
-        callbacks: PipelineCallbacks | None = None,
-    ) -> list[str]:
-        """
-        Extract speakers from audio without full processing.
-
-        Useful for speaker mapping UI before translation.
-
-        Args:
-            audio_path: Audio file path.
-            callbacks: Progress callbacks.
-
-        Returns:
-            list[str]: List of speaker IDs.
-        """
-        if not self._initialized:
-            self.initialize()
-
-        self._notify_stage(callbacks, ProcessingStage.TRANSCRIBING)
-
-        segments = self._speech_engine.process(
-            audio_path,
-            language=self.config.speech.stt.language,
-            enable_diarization=True,
-            progress_callback=lambda p: self._notify_progress(callbacks, p),
-        )
-
-        speakers = self._speaker_manager.extract_speakers(segments)
-
-        self._notify_stage(callbacks, ProcessingStage.DONE)
-
-        return speakers
-
     def get_segments_preview(
         self,
         audio_path: str,
         callbacks: PipelineCallbacks | None = None,
-    ) -> tuple[list[Segment], list[str]]:
+    ) -> list[Segment]:
         """
         Get transcribed segments without translation.
 
@@ -470,7 +399,7 @@ class SubtitlePipeline:
             callbacks: Progress callbacks.
 
         Returns:
-            tuple: (segments, speakers) lists.
+            list[Segment]: Transcribed segments.
         """
         if not self._initialized:
             self.initialize()
@@ -480,15 +409,12 @@ class SubtitlePipeline:
         segments = self._speech_engine.process(
             audio_path,
             language=self.config.speech.stt.language,
-            enable_diarization=self.config.speech.diarization.enabled,
             progress_callback=lambda p: self._notify_progress(callbacks, p),
         )
 
-        speakers = self._speaker_manager.extract_speakers(segments)
-
         self._notify_stage(callbacks, ProcessingStage.DONE)
 
-        return segments, speakers
+        return segments
 
     def translate_segments(
         self,
@@ -572,11 +498,6 @@ class SubtitlePipeline:
         """Get subtitle writer instance."""
         return self._subtitle_writer
 
-    @property
-    def speaker_manager(self) -> SpeakerManager | None:
-        """Get speaker manager instance."""
-        return self._speaker_manager
-
     def estimate_vram_usage(self) -> dict[str, float]:
         """
         Estimate total VRAM usage.
@@ -588,7 +509,7 @@ class SubtitlePipeline:
         if self._speech_engine:
             speech_vram = self._speech_engine.estimate_vram_usage()
         else:
-            speech_vram = {"stt": 4.0, "diarization": 1.0, "total": 5.0}
+            speech_vram = {"stt": 4.0, "total": 4.0}
 
         # Get translator VRAM from preset
         preset_key = self.config.translation.model_preset

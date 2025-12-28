@@ -8,7 +8,7 @@ from typing import Callable
 
 import yaml
 
-from .models import Segment, SpeakerMapping
+from .models import Segment
 
 
 class TextAlignment(Enum):
@@ -120,55 +120,6 @@ class ASSStyle:
 
 
 @dataclass
-class SpeakerStyle:
-    """Speaker-specific style configuration."""
-
-    name: str
-    color: str = "FFFFFF"
-    bold: bool = False
-    italic: bool = False
-    alignment: TextAlignment = TextAlignment.BOTTOM_CENTER
-    fontsize_modifier: float = 1.0  # Multiplier for base font size
-    outline_color: str = "000000"
-
-    def to_ass_style(self, base_style: ASSStyle) -> ASSStyle:
-        """
-        Create ASS style based on speaker style and base style.
-
-        Args:
-            base_style: Base style to modify.
-
-        Returns:
-            Modified ASSStyle.
-        """
-        return ASSStyle(
-            name=self.name,
-            fontname=base_style.fontname,
-            fontsize=int(base_style.fontsize * self.fontsize_modifier),
-            primary_color=ASSColor.from_hex(self.color),
-            secondary_color=base_style.secondary_color,
-            outline_color=ASSColor.from_hex(self.outline_color),
-            back_color=base_style.back_color,
-            bold=self.bold,
-            italic=self.italic,
-            underline=base_style.underline,
-            strikeout=base_style.strikeout,
-            scale_x=base_style.scale_x,
-            scale_y=base_style.scale_y,
-            spacing=base_style.spacing,
-            angle=base_style.angle,
-            border_style=base_style.border_style,
-            outline=base_style.outline,
-            shadow=base_style.shadow,
-            alignment=self.alignment,
-            margin_l=base_style.margin_l,
-            margin_r=base_style.margin_r,
-            margin_v=base_style.margin_v,
-            encoding=base_style.encoding,
-        )
-
-
-@dataclass
 class KeywordStyle:
     """Keyword-based style modifier."""
 
@@ -228,7 +179,6 @@ class StylePreset:
     name: str
     description: str = ""
     base: ASSStyle = field(default_factory=ASSStyle)
-    speakers: dict[str, SpeakerStyle] = field(default_factory=dict)
     keywords: list[KeywordStyle] = field(default_factory=list)
     video_width: int = 1920
     video_height: int = 1080
@@ -264,31 +214,6 @@ class StylePreset:
                 shadow=base.get("shadow", 1.0),
             )
 
-        # Load speaker styles
-        if "speakers" in data:
-            for speaker_name, style_data in data["speakers"].items():
-                alignment = TextAlignment.BOTTOM_CENTER
-                if "position" in style_data:
-                    pos_map = {
-                        "top": TextAlignment.TOP_CENTER,
-                        "top_left": TextAlignment.TOP_LEFT,
-                        "top_right": TextAlignment.TOP_RIGHT,
-                        "center": TextAlignment.MIDDLE_CENTER,
-                        "bottom": TextAlignment.BOTTOM_CENTER,
-                        "bottom_left": TextAlignment.BOTTOM_LEFT,
-                        "bottom_right": TextAlignment.BOTTOM_RIGHT,
-                    }
-                    alignment = pos_map.get(style_data["position"], TextAlignment.BOTTOM_CENTER)
-
-                preset.speakers[speaker_name] = SpeakerStyle(
-                    name=speaker_name,
-                    color=style_data.get("primary_color", style_data.get("color", "FFFFFF")),
-                    bold=style_data.get("bold", False),
-                    italic=style_data.get("italic", False),
-                    alignment=alignment,
-                    fontsize_modifier=style_data.get("size_modifier", 1.0),
-                )
-
         # Load keyword styles
         if "keywords" in data:
             for kw_data in data["keywords"]:
@@ -322,27 +247,8 @@ class StylePreset:
                 "outline": self.base.outline,
                 "shadow": self.base.shadow,
             },
-            "speakers": {},
             "keywords": [],
         }
-
-        for speaker_name, style in self.speakers.items():
-            pos_map = {
-                TextAlignment.TOP_CENTER: "top",
-                TextAlignment.TOP_LEFT: "top_left",
-                TextAlignment.TOP_RIGHT: "top_right",
-                TextAlignment.MIDDLE_CENTER: "center",
-                TextAlignment.BOTTOM_CENTER: "bottom",
-                TextAlignment.BOTTOM_LEFT: "bottom_left",
-                TextAlignment.BOTTOM_RIGHT: "bottom_right",
-            }
-            data["speakers"][speaker_name] = {
-                "color": style.color,
-                "bold": style.bold,
-                "italic": style.italic,
-                "position": pos_map.get(style.alignment, "bottom"),
-                "size_modifier": style.fontsize_modifier,
-            }
 
         for kw in self.keywords:
             data["keywords"].append({
@@ -382,9 +288,6 @@ class ASSStyler:
         self.video_width = video_width
         self.video_height = video_height
 
-        # Cache for generated styles
-        self._styles: dict[str, ASSStyle] = {}
-
     def load_preset(self, preset_path: str | Path) -> None:
         """
         Load a style preset from file.
@@ -393,44 +296,13 @@ class ASSStyler:
             preset_path: Path to preset YAML file.
         """
         self.preset = StylePreset.from_yaml(preset_path)
-        self._styles.clear()
 
-    def get_style_for_speaker(self, speaker_name: str) -> ASSStyle:
-        """
-        Get or create ASS style for a speaker.
-
-        Args:
-            speaker_name: Speaker name.
-
-        Returns:
-            ASSStyle for the speaker.
-        """
-        if speaker_name in self._styles:
-            return self._styles[speaker_name]
-
-        if speaker_name in self.preset.speakers:
-            style = self.preset.speakers[speaker_name].to_ass_style(self.preset.base)
-        else:
-            # Create default style for unknown speaker
-            style = ASSStyle(
-                name=speaker_name,
-                fontname=self.preset.base.fontname,
-                fontsize=self.preset.base.fontsize,
-                primary_color=self.preset.base.primary_color,
-                outline=self.preset.base.outline,
-                shadow=self.preset.base.shadow,
-            )
-
-        self._styles[speaker_name] = style
-        return style
-
-    def apply_keyword_styles(self, text: str, speaker_name: str) -> str:
+    def apply_keyword_styles(self, text: str) -> str:
         """
         Apply keyword-based inline styles to text.
 
         Args:
             text: Input text.
-            speaker_name: Speaker name for base color.
 
         Returns:
             Text with ASS inline tags.
@@ -438,11 +310,7 @@ class ASSStyler:
         if not self.preset.keywords:
             return text
 
-        # Get speaker's color as base
-        if speaker_name in self.preset.speakers:
-            base_color = self.preset.speakers[speaker_name].color
-        else:
-            base_color = "FFFFFF"
+        base_color = "FFFFFF"
 
         result = text
         for kw_style in self.preset.keywords:
@@ -450,36 +318,21 @@ class ASSStyler:
 
         return result
 
-    def style_segment(
-        self,
-        segment: Segment,
-        speaker_mapping: dict[str, SpeakerMapping] | None = None,
-    ) -> tuple[str, str]:
+    def style_segment(self, segment: Segment) -> tuple[str, str]:
         """
         Style a segment for ASS output.
 
         Args:
             segment: Segment to style.
-            speaker_mapping: Optional speaker mapping.
 
         Returns:
             Tuple of (style_name, styled_text).
         """
-        # Determine speaker name
-        speaker_name = segment.speaker_name
-        if not speaker_name and speaker_mapping and segment.speaker_id in speaker_mapping:
-            speaker_name = speaker_mapping[segment.speaker_id].name
-        if not speaker_name:
-            speaker_name = segment.speaker_id or "Default"
-
-        # Get style
-        style = self.get_style_for_speaker(speaker_name)
-
         # Apply keyword styles
         text = segment.translated_text or segment.original_text
-        styled_text = self.apply_keyword_styles(text, speaker_name)
+        styled_text = self.apply_keyword_styles(text)
 
-        return style.name, styled_text
+        return self.preset.base.name, styled_text
 
     def generate_styles_block(self) -> str:
         """
@@ -498,11 +351,6 @@ class ASSStyler:
 
         # Add default style
         lines.append(self.preset.base.to_ass_line())
-
-        # Add speaker styles
-        for style in self._styles.values():
-            if style.name != self.preset.base.name:
-                lines.append(style.to_ass_line())
 
         return "\n".join(lines)
 
@@ -542,17 +390,12 @@ PlayResY: {self.video_height}
         centiseconds = int((seconds * 100) % 100)
         return f"{hours}:{minutes:02d}:{secs:02d}.{centiseconds:02d}"
 
-    def generate_events(
-        self,
-        segments: list[Segment],
-        speaker_mapping: dict[str, SpeakerMapping] | None = None,
-    ) -> str:
+    def generate_events(self, segments: list[Segment]) -> str:
         """
         Generate ASS [Events] section.
 
         Args:
             segments: List of segments.
-            speaker_mapping: Optional speaker mapping.
 
         Returns:
             ASS events block.
@@ -563,17 +406,12 @@ PlayResY: {self.video_height}
         ]
 
         for segment in segments:
-            style_name, styled_text = self.style_segment(segment, speaker_mapping)
+            style_name, styled_text = self.style_segment(segment)
 
             start = self.format_time(segment.start)
             end = self.format_time(segment.end)
 
-            # Get speaker display name
-            speaker_display = segment.speaker_name or ""
-            if not speaker_display and speaker_mapping and segment.speaker_id in speaker_mapping:
-                speaker_display = speaker_mapping[segment.speaker_id].name
-
-            line = f"Dialogue: 0,{start},{end},{style_name},{speaker_display},0,0,0,,{styled_text}"
+            line = f"Dialogue: 0,{start},{end},{style_name},,0,0,0,,{styled_text}"
             lines.append(line)
 
         return "\n".join(lines)
@@ -582,7 +420,6 @@ PlayResY: {self.video_height}
         self,
         segments: list[Segment],
         title: str = "Subtitles",
-        speaker_mapping: dict[str, SpeakerMapping] | None = None,
     ) -> str:
         """
         Generate complete ASS file content.
@@ -590,24 +427,15 @@ PlayResY: {self.video_height}
         Args:
             segments: List of segments.
             title: Subtitle title.
-            speaker_mapping: Optional speaker mapping.
 
         Returns:
             Complete ASS file content.
         """
-        # Pre-generate styles for all speakers
-        for segment in segments:
-            speaker_name = segment.speaker_name
-            if not speaker_name and speaker_mapping and segment.speaker_id in speaker_mapping:
-                speaker_name = speaker_mapping[segment.speaker_id].name
-            if speaker_name:
-                self.get_style_for_speaker(speaker_name)
-
         parts = [
             self.generate_script_info(title),
             self.generate_styles_block(),
             "",
-            self.generate_events(segments, speaker_mapping),
+            self.generate_events(segments),
         ]
 
         return "\n".join(parts)

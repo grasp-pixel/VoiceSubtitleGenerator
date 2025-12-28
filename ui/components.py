@@ -282,60 +282,92 @@ class FileDialogHelper:
             default_path: Default directory.
             allow_multiple: Allow multiple file selection.
         """
+        import os
+        import platform
+        import subprocess
         import threading
 
-        def open_dialog():
-            import os
-            import tkinter as tk
-            from tkinter import filedialog
+        def open_dialog_macos():
+            """macOS: use osascript to avoid main thread issues."""
+            import logging
+            log = logging.getLogger(__name__)
+            try:
+                if allow_multiple:
+                    script = 'POSIX path of (choose file with multiple selections allowed)'
+                    # Returns paths separated by ", " for multiple files
+                    result = subprocess.run(
+                        ['osascript', '-e', f'set files to ({script})',
+                         '-e', 'set output to ""',
+                         '-e', 'repeat with f in files',
+                         '-e', 'set output to output & POSIX path of f & linefeed',
+                         '-e', 'end repeat',
+                         '-e', 'return output'],
+                        capture_output=True, text=True, timeout=300
+                    )
+                else:
+                    script = 'POSIX path of (choose file)'
+                    result = subprocess.run(
+                        ['osascript', '-e', script],
+                        capture_output=True, text=True, timeout=300
+                    )
 
-            # Create hidden root window
-            root = tk.Tk()
-            root.withdraw()
-            root.attributes("-topmost", True)
+                log.info(f"osascript returncode: {result.returncode}")
+                log.info(f"osascript stdout: {repr(result.stdout)}")
+                log.info(f"osascript stderr: {repr(result.stderr)}")
 
-            # Build filetypes for tkinter
+                if result.returncode == 0 and result.stdout.strip():
+                    paths = [p.strip() for p in result.stdout.strip().split('\n') if p.strip()]
+                    log.info(f"Parsed paths: {paths}")
+                    if paths:
+                        normalized = [os.path.normpath(f) for f in paths]
+                        log.info(f"Calling callback with: {normalized}")
+                        callback(normalized)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"File dialog error: {e}")
+
+        def open_dialog_other():
+            """Windows/Linux: use plyer."""
+            from plyer import filechooser
+
             if extensions:
-                filetypes = []
+                filters = []
                 for ext, desc in extensions:
                     if ext == ".*":
-                        filetypes.append((desc, "*.*"))
+                        filters.append((desc, "*.*"))
                     else:
-                        filetypes.append((desc, f"*{ext}"))
+                        filters.append((desc, f"*{ext}"))
             else:
-                filetypes = [
-                    ("Media Files", "*.mp3 *.wav *.flac *.m4a *.ogg *.wma *.aac *.opus "
-                                   "*.mp4 *.mkv *.avi *.webm *.mov *.wmv *.flv *.ts *.m2ts"),
-                    ("Audio Files", "*.mp3 *.wav *.flac *.m4a *.ogg *.wma *.aac *.opus"),
-                    ("Video Files", "*.mp4 *.mkv *.avi *.webm *.mov *.wmv *.flv *.ts *.m2ts"),
-                    ("All Files", "*.*"),
+                filters = [
+                    ("Media Files", "*.mp3", "*.wav", "*.flac", "*.m4a", "*.ogg",
+                     "*.wma", "*.aac", "*.opus", "*.mp4", "*.mkv", "*.avi",
+                     "*.webm", "*.mov", "*.wmv", "*.flv", "*.ts", "*.m2ts"),
                 ]
 
-            if allow_multiple:
-                files = filedialog.askopenfilenames(
+            try:
+                result = filechooser.open_file(
                     title="파일 선택",
-                    initialdir=default_path or None,
-                    filetypes=filetypes,
+                    path=default_path or None,
+                    filters=filters,
+                    multiple=allow_multiple,
                 )
-                result = list(files) if files else []
-            else:
-                file = filedialog.askopenfilename(
-                    title="파일 선택",
-                    initialdir=default_path or None,
-                    filetypes=filetypes,
-                )
-                result = [file] if file else []
 
-            root.destroy()
+                if result:
+                    normalized = [os.path.normpath(f) for f in result]
+                    callback(normalized)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"File dialog error: {e}")
 
-            if result:
-                # Normalize paths for proper encoding
-                normalized = [os.path.normpath(f) for f in result]
-                callback(normalized)
-
-        # Run in thread to avoid blocking
-        thread = threading.Thread(target=open_dialog, daemon=True)
-        thread.start()
+        # Choose implementation based on platform
+        if platform.system() == "Darwin":
+            # macOS: run in thread (osascript is safe)
+            thread = threading.Thread(target=open_dialog_macos, daemon=True)
+            thread.start()
+        else:
+            # Windows/Linux: run in thread
+            thread = threading.Thread(target=open_dialog_other, daemon=True)
+            thread.start()
 
     @staticmethod
     def show_folder_dialog(
@@ -349,32 +381,51 @@ class FileDialogHelper:
             callback: Callback with selected folder path.
             default_path: Default directory.
         """
+        import os
+        import platform
+        import subprocess
         import threading
 
-        def open_dialog():
-            import os
-            import tkinter as tk
-            from tkinter import filedialog
+        def open_dialog_macos():
+            """macOS: use osascript to avoid main thread issues."""
+            try:
+                script = 'POSIX path of (choose folder)'
+                result = subprocess.run(
+                    ['osascript', '-e', script],
+                    capture_output=True, text=True, timeout=300
+                )
 
-            # Create hidden root window
-            root = tk.Tk()
-            root.withdraw()
-            root.attributes("-topmost", True)
+                if result.returncode == 0 and result.stdout.strip():
+                    folder = result.stdout.strip()
+                    callback(os.path.normpath(folder))
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Folder dialog error: {e}")
 
-            folder = filedialog.askdirectory(
-                title="폴더 선택",
-                initialdir=default_path or None,
-            )
+        def open_dialog_other():
+            """Windows/Linux: use plyer."""
+            from plyer import filechooser
 
-            root.destroy()
+            try:
+                result = filechooser.choose_dir(
+                    title="폴더 선택",
+                    path=default_path or None,
+                )
 
-            if folder:
-                # Normalize path for proper encoding
-                callback(os.path.normpath(folder))
+                if result:
+                    folder = result[0] if isinstance(result, list) else result
+                    callback(os.path.normpath(folder))
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Folder dialog error: {e}")
 
-        # Run in thread to avoid blocking
-        thread = threading.Thread(target=open_dialog, daemon=True)
-        thread.start()
+        # Choose implementation based on platform
+        if platform.system() == "Darwin":
+            thread = threading.Thread(target=open_dialog_macos, daemon=True)
+            thread.start()
+        else:
+            thread = threading.Thread(target=open_dialog_other, daemon=True)
+            thread.start()
 
 
 def format_duration(seconds: float) -> str:

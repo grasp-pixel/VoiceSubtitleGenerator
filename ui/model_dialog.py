@@ -87,13 +87,13 @@ class ModelDialog:
                 )
 
     def _build_whisper_tab(self) -> None:
-        """Build WhisperX model tab."""
-        with dpg.tab(label="음성 인식 (WhisperX)"):
+        """Build Whisper model tab."""
+        with dpg.tab(label="음성 인식 (Whisper)"):
             dpg.add_spacer(height=10)
 
             # Current model status
             model_size = self.config.speech.stt.model_size
-            status = self.model_manager.check_whisperx_model(model_size)
+            status = self.model_manager.check_whisper_model(model_size)
 
             dpg.add_text("현재 설정된 모델:", color=THEME.text_primary)
             with dpg.group(horizontal=True):
@@ -114,7 +114,7 @@ class ModelDialog:
             whisper_models = self.model_manager.get_available_whisper_models()
             model_items = []
             for size, info in whisper_models:
-                ws = self.model_manager.check_whisperx_model(size)
+                ws = self.model_manager.check_whisper_model(size)
                 status_text = "✓" if ws["cached"] else ""
                 model_items.append(f"{status_text} {info.name} - {info.description}")
 
@@ -129,14 +129,14 @@ class ModelDialog:
             dpg.add_spacer(height=10)
 
             self._whisper_download_btn = dpg.add_button(
-                label="WhisperX 모델 다운로드",
+                label="Whisper 모델 다운로드",
                 width=200,
                 callback=self._on_download_whisper,
             )
 
             dpg.add_spacer(height=10)
             dpg.add_text(
-                "참고: WhisperX 모델은 HuggingFace에서 자동으로 다운로드됩니다.\n"
+                "참고: Whisper 모델은 HuggingFace에서 자동으로 다운로드됩니다.\n"
                 "처음 사용 시 자동 다운로드되지만, 여기서 미리 다운로드할 수 있습니다.",
                 color=THEME.text_secondary,
                 wrap=550,
@@ -224,7 +224,7 @@ class ModelDialog:
             )
 
     def _on_download_whisper(self) -> None:
-        """Handle WhisperX download button."""
+        """Handle Whisper download button."""
         if self._is_downloading:
             show_message_box("다운로드 중", "이미 다운로드가 진행 중입니다.", "warning")
             return
@@ -250,7 +250,7 @@ class ModelDialog:
             return
 
         self._start_download(
-            lambda cb: self.model_manager.download_whisperx_model(model_size, cb),
+            lambda cb: self.model_manager.download_whisper_model(model_size, cb),
             self._whisper_download_btn,
         )
 

@@ -5,7 +5,6 @@ import pytest
 from src.config import (
     AppConfig,
     ConfigManager,
-    DiarizationConfig,
     SpeechConfig,
     STTConfig,
     SubtitleConfig,
@@ -29,17 +28,11 @@ class TestConfigManager:
 
         assert isinstance(speech, SpeechConfig)
         assert isinstance(speech.stt, STTConfig)
-        assert isinstance(speech.diarization, DiarizationConfig)
 
         # STT config
         assert speech.stt.model_size == "large-v3"
         assert speech.stt.device == "cuda"
         assert speech.stt.compute_type == "float16"
-
-        # Diarization config
-        assert speech.diarization.enabled is True
-        assert speech.diarization.min_speakers == 1
-        assert speech.diarization.max_speakers == 10
 
     def test_load_translation_config(self, app_config):
         """Test translation configuration loading."""
@@ -58,7 +51,6 @@ class TestConfigManager:
 
         assert isinstance(subtitle, SubtitleConfig)
         assert subtitle.default_format == "srt"
-        assert subtitle.include_speaker is True
         assert subtitle.include_original is False
         assert subtitle.ass.video_width == 1920
         assert subtitle.ass.video_height == 1080
@@ -113,7 +105,6 @@ class TestAppConfig:
         assert config.stt.model_size == "large-v3"
         assert config.stt.device == "cuda"
         assert config.stt.compute_type == "float16"
-        assert config.diarization.enabled is True
 
     def test_translation_config_creation(self):
         """Test creating TranslationConfig with defaults."""
@@ -127,4 +118,3 @@ class TestAppConfig:
         config = SubtitleConfig()
 
         assert config.default_format == "srt"
-        assert config.include_speaker is True

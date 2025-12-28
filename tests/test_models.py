@@ -5,7 +5,6 @@ import pytest
 from src.models import (
     Segment,
     Word,
-    SpeakerMapping,
     ProcessResult,
     AudioInfo,
 )
@@ -51,7 +50,6 @@ class TestSegment:
         assert segment.end == 2.5
         assert segment.original_text == "こんにちは"
         assert segment.translated_text == ""
-        assert segment.speaker_id == "UNKNOWN"
 
     def test_segment_with_all_fields(self):
         """Test creating a Segment with all fields."""
@@ -66,14 +64,10 @@ class TestSegment:
             end=2.5,
             original_text="こんにちは",
             translated_text="안녕하세요",
-            speaker_id="SPEAKER_00",
-            speaker_name="캐릭터A",
             words=words,
         )
 
         assert segment.translated_text == "안녕하세요"
-        assert segment.speaker_id == "SPEAKER_00"
-        assert segment.speaker_name == "캐릭터A"
         assert len(segment.words) == 3
 
     def test_segment_duration(self):
@@ -87,38 +81,6 @@ class TestSegment:
         assert segment.end - segment.start == 2.5
 
 
-class TestSpeakerMapping:
-    """Tests for SpeakerMapping model."""
-
-    def test_speaker_mapping_creation(self):
-        """Test creating a SpeakerMapping."""
-        mapping = SpeakerMapping(
-            speaker_id="SPEAKER_00",
-            name="히로인",
-        )
-
-        assert mapping.speaker_id == "SPEAKER_00"
-        assert mapping.name == "히로인"
-        assert mapping.color == "FFFFFF"  # Default white
-
-    def test_speaker_mapping_with_color(self):
-        """Test creating a SpeakerMapping with color."""
-        mapping = SpeakerMapping(
-            speaker_id="SPEAKER_01",
-            name="주인공",
-            color="00BFFF",
-        )
-
-        assert mapping.color == "00BFFF"
-
-    def test_sample_speaker_mapping(self, sample_speaker_mapping):
-        """Test sample speaker mapping fixture."""
-        assert len(sample_speaker_mapping) == 2
-        assert "SPEAKER_00" in sample_speaker_mapping
-        assert "SPEAKER_01" in sample_speaker_mapping
-        assert sample_speaker_mapping["SPEAKER_00"].name == "히로인"
-
-
 class TestProcessResult:
     """Tests for ProcessResult model."""
 
@@ -127,13 +89,11 @@ class TestProcessResult:
         result = ProcessResult(
             success=True,
             segments=sample_segments,
-            speakers=["SPEAKER_00", "SPEAKER_01"],
             output_path="output/test.srt",
         )
 
         assert result.success is True
         assert len(result.segments) == 3
-        assert len(result.speakers) == 2
         assert result.error is None
 
     def test_failed_result(self):
@@ -141,7 +101,6 @@ class TestProcessResult:
         result = ProcessResult(
             success=False,
             segments=[],
-            speakers=[],
             error="Audio file not found",
         )
 
@@ -154,7 +113,6 @@ class TestProcessResult:
         result = ProcessResult(
             success=True,
             segments=sample_segments,
-            speakers=["SPEAKER_00", "SPEAKER_01"],
         )
 
         # Duration should be from first segment start to last segment end

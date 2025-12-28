@@ -34,7 +34,7 @@ class ModelStatus:
     size_on_disk: int = 0
 
 
-# WhisperX model sizes and approximate VRAM requirements
+# Whisper model sizes and approximate VRAM requirements
 WHISPER_MODELS = {
     "tiny": ModelInfo(
         name="Whisper Tiny",
@@ -151,9 +151,9 @@ class ModelManager:
         """Check translation model status."""
         return self.check_model(model_path)
 
-    def check_whisperx_model(self, model_size: str) -> dict:
+    def check_whisper_model(self, model_size: str) -> dict:
         """
-        Check WhisperX model status.
+        Check Whisper model status.
 
         Args:
             model_size: Model size (tiny, base, small, medium, large-v2, large-v3).
@@ -161,7 +161,7 @@ class ModelManager:
         Returns:
             dict with status info.
         """
-        # WhisperX uses HuggingFace cache
+        # faster-whisper uses HuggingFace cache
         cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
 
         # Model name mapping for faster-whisper (CTranslate2 format)
@@ -193,13 +193,13 @@ class ModelManager:
             "info": info,
         }
 
-    def download_whisperx_model(
+    def download_whisper_model(
         self,
         model_size: str,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> bool:
         """
-        Download WhisperX model using huggingface_hub.
+        Download Whisper model using huggingface_hub.
 
         Args:
             model_size: Model size to download.
@@ -210,7 +210,7 @@ class ModelManager:
         """
         try:
             if progress_callback:
-                progress_callback(0.0, f"WhisperX {model_size} 다운로드 준비 중...")
+                progress_callback(0.0, f"Whisper {model_size} 다운로드 준비 중...")
 
             from huggingface_hub import snapshot_download
 
@@ -241,11 +241,11 @@ class ModelManager:
             if progress_callback:
                 progress_callback(1.0, "다운로드 완료!")
 
-            logger.info(f"Downloaded WhisperX model: {model_size}")
+            logger.info(f"Downloaded Whisper model: {model_size}")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to download WhisperX model: {e}")
+            logger.error(f"Failed to download Whisper model: {e}")
             if progress_callback:
                 progress_callback(0.0, f"다운로드 실패: {e}")
             return False
@@ -407,5 +407,5 @@ class ModelManager:
         return self.download_model(model_info, progress_callback)
 
     def get_available_whisper_models(self) -> list[tuple[str, ModelInfo]]:
-        """Get list of available WhisperX models."""
+        """Get list of available Whisper models."""
         return list(WHISPER_MODELS.items())

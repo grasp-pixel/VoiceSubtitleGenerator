@@ -17,6 +17,46 @@ from .main_window import MainWindow
 logger = logging.getLogger(__name__)
 
 
+def download_default_font(fonts_dir: Path) -> Path | None:
+    """Download default CJK font if not present.
+
+    Returns:
+        Path to downloaded font, or None if failed.
+    """
+    import ssl
+    import urllib.request
+
+    font_file = "NotoSansCJKjp-Regular.otf"
+    font_path = fonts_dir / font_file
+
+    if font_path.exists():
+        return font_path
+
+    fonts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Direct link from GitHub notofonts
+    font_url = "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf"
+
+    logger.info("Downloading CJK font for first run...")
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+        req = urllib.request.Request(font_url, headers={"User-Agent": "Mozilla/5.0"})
+
+        with urllib.request.urlopen(req, context=ctx, timeout=60) as response:
+            data = response.read()
+            font_path.write_bytes(data)
+
+        logger.info(f"Downloaded font: {font_path.name} ({font_path.stat().st_size / 1024 / 1024:.1f} MB)")
+        return font_path
+
+    except Exception as e:
+        logger.warning(f"Failed to download font: {e}")
+        return None
+
+
 def setup_font() -> None:
     """Setup font with clear rendering using 2x render + 0.5 scale.
 
@@ -32,6 +72,7 @@ def setup_font() -> None:
         fonts_dir / "NotoSansCJKjp-Regular.otf",
         fonts_dir / "NotoSansJP-Regular.ttf",
         Path("C:/Windows/Fonts/malgun.ttf"),
+        Path("/System/Library/Fonts/AppleSDGothicNeo.ttc"),  # macOS
     ]
 
     font_path = None
@@ -39,6 +80,12 @@ def setup_font() -> None:
         if path.exists():
             font_path = str(path)
             break
+
+    # Auto-download if no font found
+    if not font_path:
+        downloaded = download_default_font(fonts_dir)
+        if downloaded:
+            font_path = str(downloaded)
 
     if not font_path:
         logger.warning("No suitable font found, using default")
@@ -156,6 +203,8 @@ def run_app(config_path: str | None = None) -> int:
         dpg.show_viewport()
 
         while dpg.is_dearpygui_running():
+            # Process pending files from background threads
+            main_window.process_pending()
             dpg.render_dearpygui_frame()
 
         return 0

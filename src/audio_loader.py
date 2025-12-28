@@ -37,7 +37,7 @@ class AudioLoader:
         Initialize audio loader.
 
         Args:
-            target_sample_rate: Output sample rate (16kHz recommended for WhisperX).
+            target_sample_rate: Output sample rate (16kHz recommended for faster-whisper).
             normalize: Whether to normalize audio levels.
         """
         self.target_sample_rate = target_sample_rate
@@ -46,7 +46,7 @@ class AudioLoader:
 
     def load(self, audio_path: str) -> np.ndarray:
         """
-        Load audio file and preprocess for WhisperX.
+        Load audio file and preprocess for faster-whisper.
 
         Args:
             audio_path: Path to audio file.
@@ -101,7 +101,7 @@ class AudioLoader:
         """
         Load and preprocess audio, save to temporary WAV file.
 
-        Useful when WhisperX requires file path instead of array.
+        Useful when faster-whisper requires file path instead of array.
 
         Args:
             audio_path: Path to input audio file.

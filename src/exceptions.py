@@ -163,29 +163,18 @@ class TranscriptionError(VoiceSubtitleError):
     pass
 
 
-class WhisperXError(TranscriptionError):
-    """WhisperX processing error."""
+class STTError(TranscriptionError):
+    """Speech-to-text processing error."""
 
     def __init__(self, stage: str, reason: str | None = None):
         details = f"Stage: {stage}"
         if reason:
             details += f", Reason: {reason}"
         super().__init__(
-            "WhisperX processing failed",
+            "STT processing failed",
             details,
         )
         self.stage = stage
-        self.reason = reason
-
-
-class DiarizationError(TranscriptionError):
-    """Speaker diarization error."""
-
-    def __init__(self, reason: str | None = None):
-        super().__init__(
-            "Speaker diarization failed",
-            reason,
-        )
         self.reason = reason
 
 
@@ -323,36 +312,3 @@ class ProcessingError(PipelineError):
         self.reason = reason
 
 
-# Speaker errors
-
-
-class SpeakerError(VoiceSubtitleError):
-    """Speaker related errors."""
-
-    pass
-
-
-class SpeakerPresetNotFoundError(SpeakerError):
-    """Speaker preset not found."""
-
-    def __init__(self, preset_name: str):
-        super().__init__(
-            "Speaker preset not found",
-            f"Preset: {preset_name}",
-        )
-        self.preset_name = preset_name
-
-
-class SpeakerMappingError(SpeakerError):
-    """Speaker mapping error."""
-
-    def __init__(self, speaker_id: str, reason: str | None = None):
-        details = f"Speaker: {speaker_id}"
-        if reason:
-            details += f", Reason: {reason}"
-        super().__init__(
-            "Speaker mapping failed",
-            details,
-        )
-        self.speaker_id = speaker_id
-        self.reason = reason

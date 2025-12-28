@@ -7,7 +7,6 @@ import dearpygui.dearpygui as dpg
 from src.config import (
     AppConfig,
     ConfigManager,
-    SUPPORTED_DIARIZATION_BACKENDS,
     SUPPORTED_WHISPER_MODELS,
     TRANSLATION_MODEL_PRESETS,
 )
@@ -24,7 +23,6 @@ class SettingsDialog:
     """
 
     WHISPER_MODELS = SUPPORTED_WHISPER_MODELS
-    DIARIZATION_BACKENDS = SUPPORTED_DIARIZATION_BACKENDS
     DEVICES = ["cuda", "cpu"]
     COMPUTE_TYPES = ["float16", "int8", "float32"]
     SUBTITLE_FORMATS = ["srt", "ass", "vtt"]
@@ -92,7 +90,7 @@ class SettingsDialog:
             # Tab bar
             with dpg.tab_bar():
                 self._build_general_tab()
-                self._build_whisperx_tab()
+                self._build_stt_tab()
                 self._build_translation_tab()
                 self._build_subtitle_tab()
 
@@ -205,7 +203,7 @@ class SettingsDialog:
                 color=THEME.text_secondary,
             )
 
-    def _build_whisperx_tab(self) -> None:
+    def _build_stt_tab(self) -> None:
         """Build speech processing settings tab."""
         with dpg.tab(label="음성인식"):
             dpg.add_spacer(height=10)
@@ -251,82 +249,6 @@ class SettingsDialog:
                 label="VAD 필터 사용 (묵음 구간 스킵)",
                 default_value=self._config.speech.stt.vad_filter,
             )
-
-            dpg.add_separator()
-
-            # Diarization settings
-            dpg.add_text("화자 분리:", color=THEME.text_primary)
-            dpg.add_spacer(height=5)
-
-            self._inputs["diarization_enabled"] = dpg.add_checkbox(
-                label="화자 분리 사용",
-                default_value=self._config.speech.diarization.enabled,
-            )
-
-            with dpg.group(horizontal=True):
-                dpg.add_text("백엔드:", color=THEME.text_secondary)
-                self._inputs["diarization_backend"] = dpg.add_combo(
-                    items=self.DIARIZATION_BACKENDS,
-                    default_value=self._config.speech.diarization.backend,
-                    width=150,
-                )
-            dpg.add_text(
-                "  pyannote: 고품질 (HF 토큰 필요) | speechbrain: 토큰 불필요",
-                color=THEME.text_secondary,
-            )
-
-            with dpg.group(horizontal=True):
-                dpg.add_text("최소 화자 수:", color=THEME.text_secondary)
-                self._inputs["min_speakers"] = dpg.add_input_int(
-                    default_value=self._config.speech.diarization.min_speakers,
-                    width=160,
-                    min_value=1,
-                    max_value=20,
-                )
-
-            with dpg.group(horizontal=True):
-                dpg.add_text("최대 화자 수:", color=THEME.text_secondary)
-                self._inputs["max_speakers"] = dpg.add_input_int(
-                    default_value=self._config.speech.diarization.max_speakers,
-                    width=160,
-                    min_value=1,
-                    max_value=20,
-                )
-
-            dpg.add_separator()
-
-            # HuggingFace token
-            dpg.add_text("HuggingFace 토큰:", color=THEME.text_primary)
-            dpg.add_text(
-                "(pyannote 화자 분리에 필요)",
-                color=THEME.text_secondary,
-            )
-            self._inputs["hf_token"] = dpg.add_input_text(
-                default_value=self._config.speech.diarization.hf_token,
-                width=-1,
-                password=True,
-            )
-
-            # HF token help section
-            dpg.add_spacer(height=5)
-            with dpg.group(horizontal=True):
-                dpg.add_text("토큰 발급:", color=THEME.text_secondary)
-                dpg.add_button(
-                    label="huggingface.co/settings/tokens",
-                    callback=lambda: self._open_url(
-                        "https://huggingface.co/settings/tokens"
-                    ),
-                    small=True,
-                )
-            with dpg.group(horizontal=True):
-                dpg.add_text("라이선스 동의:", color=THEME.text_secondary)
-                dpg.add_button(
-                    label="pyannote/speaker-diarization-3.1",
-                    callback=lambda: self._open_url(
-                        "https://huggingface.co/pyannote/speaker-diarization-3.1"
-                    ),
-                    small=True,
-                )
 
     def _build_translation_tab(self) -> None:
         """Build translation settings tab."""
@@ -482,10 +404,6 @@ class SettingsDialog:
                 )
 
             dpg.add_spacer(height=5)
-            self._inputs["include_speaker"] = dpg.add_checkbox(
-                label="화자 이름 포함",
-                default_value=self._config.subtitle.include_speaker,
-            )
 
             self._inputs["include_original"] = dpg.add_checkbox(
                 label="원문 포함",
@@ -801,21 +719,6 @@ class SettingsDialog:
         self._config.speech.stt.beam_size = dpg.get_value(self._inputs["beam_size"])
         self._config.speech.stt.vad_filter = dpg.get_value(self._inputs["vad_filter"])
 
-        # Diarization settings
-        self._config.speech.diarization.enabled = dpg.get_value(
-            self._inputs["diarization_enabled"]
-        )
-        self._config.speech.diarization.backend = dpg.get_value(
-            self._inputs["diarization_backend"]
-        )
-        self._config.speech.diarization.min_speakers = dpg.get_value(
-            self._inputs["min_speakers"]
-        )
-        self._config.speech.diarization.max_speakers = dpg.get_value(
-            self._inputs["max_speakers"]
-        )
-        self._config.speech.diarization.hf_token = dpg.get_value(self._inputs["hf_token"])
-
         # Get selected model preset
         preset_display = dpg.get_value(self._inputs["model_preset"])
         for i, key in enumerate(self._preset_keys):
@@ -848,9 +751,6 @@ class SettingsDialog:
 
         self._config.subtitle.default_format = dpg.get_value(
             self._inputs["default_format"]
-        )
-        self._config.subtitle.include_speaker = dpg.get_value(
-            self._inputs["include_speaker"]
         )
         self._config.subtitle.include_original = dpg.get_value(
             self._inputs["include_original"]

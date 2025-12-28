@@ -1,12 +1,12 @@
 """Voice Subtitle Generator - Main Entry Point.
 
-A tool for generating Korean subtitles from Japanese audio files
-with speaker diarization support.
+A tool for generating Korean subtitles from Japanese audio files.
 """
 
 import argparse
 import faulthandler
 import logging
+import shutil
 import sys
 
 # Enable faulthandler to get traceback on crash
@@ -20,6 +20,32 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+
+def setup_ffmpeg() -> bool:
+    """Setup ffmpeg and verify it's available.
+
+    Returns True if ffmpeg is available, False otherwise.
+    """
+    # First, try to add static-ffmpeg to PATH
+    try:
+        import static_ffmpeg
+        static_ffmpeg.add_paths()
+        logger.debug("Added static-ffmpeg to PATH")
+    except ImportError:
+        logger.debug("static-ffmpeg not installed, checking system ffmpeg")
+
+    # Verify ffmpeg is available
+    if shutil.which("ffmpeg") is None:
+        logger.error(
+            "ffmpeg not found. Please install ffmpeg:\n"
+            "  - Windows: winget install ffmpeg\n"
+            "  - macOS: brew install ffmpeg\n"
+            "  - Linux: sudo apt install ffmpeg"
+        )
+        return False
+
+    return True
 
 
 def setup_argparser() -> argparse.ArgumentParser:
@@ -66,11 +92,6 @@ def setup_argparser() -> argparse.ArgumentParser:
         choices=["srt", "ass", "vtt"],
         default="srt",
         help="Output subtitle format",
-    )
-    process_parser.add_argument(
-        "--no-diarization",
-        action="store_true",
-        help="Disable speaker diarization",
     )
     process_parser.add_argument(
         "--config",
@@ -127,10 +148,6 @@ def cmd_process(args: argparse.Namespace) -> int:
     config_manager = ConfigManager(args.config)
     config = config_manager.load()
 
-    # Override diarization setting if --no-diarization
-    if args.no_diarization:
-        config.speech.diarization.enabled = False
-
     # Validate config
     errors = config_manager.validate()
     if errors:
@@ -170,7 +187,7 @@ def cmd_process(args: argparse.Namespace) -> int:
     def on_file_complete(result: ProcessResult) -> None:
         if result.success:
             logger.info(f"  Saved: {result.output_path}")
-            logger.info(f"  Segments: {len(result.segments)}, Speakers: {len(result.speakers)}")
+            logger.info(f"  Segments: {len(result.segments)}")
         else:
             logger.error(f"  Failed: {result.error}")
 
@@ -226,7 +243,6 @@ def cmd_config(args: argparse.Namespace) -> int:
         print(f"STT model: {config.speech.stt.model_size}")
         print(f"Device: {config.speech.stt.device}")
         print(f"Translation model: {config.translation.model_path}")
-        print(f"Diarization: {'enabled' if config.speech.diarization.enabled else 'disabled'}")
         return 0
 
     return 0
@@ -234,6 +250,10 @@ def cmd_config(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Main entry point."""
+    # Setup ffmpeg first
+    if not setup_ffmpeg():
+        return 1
+
     parser = setup_argparser()
     args = parser.parse_args()
 

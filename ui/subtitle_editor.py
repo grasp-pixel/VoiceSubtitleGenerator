@@ -109,7 +109,6 @@ class SubtitleEditorPanel:
             dpg.add_table_column(label="#", width_fixed=True, init_width_or_weight=40)
             dpg.add_table_column(label="Start", width_fixed=True, init_width_or_weight=80)
             dpg.add_table_column(label="End", width_fixed=True, init_width_or_weight=80)
-            dpg.add_table_column(label="Speaker", width_fixed=True, init_width_or_weight=100)
             dpg.add_table_column(label="Text")
 
     def _build_detail_editor(self) -> None:
@@ -139,22 +138,6 @@ class SubtitleEditorPanel:
                     width=100,
                     format="%.3f",
                     callback=self._on_timing_change,
-                )
-
-            dpg.add_spacer(height=10)
-
-            # Speaker section
-            dpg.add_text("Speaker:", color=THEME.text_secondary)
-            with dpg.group(horizontal=True):
-                self._input_elements["speaker_id"] = dpg.add_input_text(
-                    label="ID",
-                    width=120,
-                    callback=self._on_speaker_change,
-                )
-                self._input_elements["speaker_name"] = dpg.add_input_text(
-                    label="Name",
-                    width=150,
-                    callback=self._on_speaker_change,
                 )
 
             dpg.add_spacer(height=10)
@@ -278,10 +261,6 @@ class SubtitleEditorPanel:
             # End time
             dpg.add_text(f"{seg.end:.2f}")
 
-            # Speaker
-            speaker = seg.speaker_name or seg.speaker_id or "-"
-            dpg.add_text(speaker[:12])
-
             # Text preview
             text = seg.translated_text or seg.original_text or ""
             preview = text[:30] + "..." if len(text) > 30 else text
@@ -301,8 +280,6 @@ class SubtitleEditorPanel:
 
         dpg.set_value(self._input_elements["start"], seg.start)
         dpg.set_value(self._input_elements["end"], seg.end)
-        dpg.set_value(self._input_elements["speaker_id"], seg.speaker_id)
-        dpg.set_value(self._input_elements["speaker_name"], seg.speaker_name)
         dpg.set_value(self._input_elements["original"], seg.original_text)
         dpg.set_value(self._input_elements["translated"], seg.translated_text)
 
@@ -314,10 +291,6 @@ class SubtitleEditorPanel:
 
     def _on_timing_change(self, sender, app_data, user_data) -> None:
         """Handle timing change."""
-        self._mark_current_modified()
-
-    def _on_speaker_change(self, sender, app_data, user_data) -> None:
-        """Handle speaker change."""
         self._mark_current_modified()
 
     def _on_text_change(self, sender, app_data, user_data) -> None:
@@ -341,8 +314,6 @@ class SubtitleEditorPanel:
         # Update segment from inputs
         edit_seg.segment.start = dpg.get_value(self._input_elements["start"])
         edit_seg.segment.end = dpg.get_value(self._input_elements["end"])
-        edit_seg.segment.speaker_id = dpg.get_value(self._input_elements["speaker_id"])
-        edit_seg.segment.speaker_name = dpg.get_value(self._input_elements["speaker_name"])
         edit_seg.segment.original_text = dpg.get_value(self._input_elements["original"])
         edit_seg.segment.translated_text = dpg.get_value(self._input_elements["translated"])
 
@@ -397,8 +368,6 @@ class SubtitleEditorPanel:
             end=seg.end,
             original_text="",
             translated_text="",
-            speaker_id=seg.speaker_id,
-            speaker_name=seg.speaker_name,
         )
 
         # Update original segment

@@ -9,7 +9,7 @@ from pysubs2 import SSAFile, SSAStyle, SSAEvent
 
 from .ass_styler import ASSStyler, StylePreset
 from .config import SubtitleConfig
-from .models import Segment, SubtitleStyle, SpeakerMapping
+from .models import Segment, SubtitleStyle
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +24,11 @@ class SubtitleWriter:
     """
     Generate subtitle files in various formats.
 
-    Supports SRT, ASS, and VTT formats with speaker styling.
+    Supports SRT, ASS, and VTT formats.
     """
 
     def __init__(
         self,
-        include_speaker: bool = True,
         include_original: bool = False,
         video_width: int = 1920,
         video_height: int = 1080,
@@ -43,7 +42,6 @@ class SubtitleWriter:
         Initialize subtitle writer.
 
         Args:
-            include_speaker: Include speaker name in subtitles.
             include_original: Include original Japanese text.
             video_width: Video width for ASS.
             video_height: Video height for ASS.
@@ -53,7 +51,6 @@ class SubtitleWriter:
             original_size: Font size for original text.
             style_preset: Optional style preset for ASS styling.
         """
-        self.include_speaker = include_speaker
         self.include_original = include_original
         self.video_width = video_width
         self.video_height = video_height
@@ -68,7 +65,6 @@ class SubtitleWriter:
     def from_config(cls, config: SubtitleConfig) -> "SubtitleWriter":
         """Create writer from config."""
         return cls(
-            include_speaker=config.include_speaker,
             include_original=config.include_original,
             video_width=config.ass.video_width,
             video_height=config.ass.video_height,
@@ -104,7 +100,6 @@ class SubtitleWriter:
         output_path: str,
         format: str = "srt",
         styles: dict[str, SubtitleStyle] | None = None,
-        speaker_mapping: dict[str, SpeakerMapping] | None = None,
     ) -> None:
         """
         Write subtitles to file.
@@ -113,8 +108,7 @@ class SubtitleWriter:
             segments: List of segments to write.
             output_path: Output file path.
             format: Output format (srt, ass, vtt).
-            styles: Speaker styles for ASS format.
-            speaker_mapping: Speaker mappings for colors.
+            styles: Named styles for ASS format.
 
         Raises:
             SubtitleWriterError: If writing fails.
@@ -125,7 +119,7 @@ class SubtitleWriter:
             if format == "srt":
                 self.write_srt(segments, output_path)
             elif format == "ass":
-                self.write_ass(segments, output_path, styles, speaker_mapping)
+                self.write_ass(segments, output_path, styles)
             elif format == "vtt":
                 self.write_vtt(segments, output_path)
             else:
@@ -167,7 +161,6 @@ class SubtitleWriter:
         segments: list[Segment],
         output_path: str,
         styles: dict[str, SubtitleStyle] | None = None,
-        speaker_mapping: dict[str, SpeakerMapping] | None = None,
     ) -> None:
         """
         Write ASS format subtitles with styling.
@@ -175,12 +168,11 @@ class SubtitleWriter:
         Args:
             segments: List of segments.
             output_path: Output file path.
-            styles: Named styles for different speakers.
-            speaker_mapping: Speaker mappings for auto-styling.
+            styles: Named styles for styling.
         """
         # Use advanced styler if preset is available
         if self.style_preset is not None:
-            self.write_styled_ass(segments, output_path, speaker_mapping)
+            self.write_styled_ass(segments, output_path)
             return
 
         subs = SSAFile()
@@ -193,34 +185,15 @@ class SubtitleWriter:
         default_style = self._create_default_ass_style()
         subs.styles["Default"] = default_style
 
-        # Create speaker-specific styles
-        speaker_styles = self._create_speaker_styles(
-            segments, styles, speaker_mapping
-        )
-        for style_name, style in speaker_styles.items():
-            subs.styles[style_name] = style
-
         # Add events
         for segment in segments:
             text = self._build_text(segment, for_ass=True)
-
-            # Determine style
-            style_name = "Default"
-            if segment.speaker_name:
-                # Sanitize speaker name for style
-                safe_name = self._sanitize_style_name(segment.speaker_name)
-                if safe_name in subs.styles:
-                    style_name = safe_name
-            elif segment.speaker_id and segment.speaker_id != "UNKNOWN":
-                safe_id = self._sanitize_style_name(segment.speaker_id)
-                if safe_id in subs.styles:
-                    style_name = safe_id
 
             event = SSAEvent(
                 start=int(segment.start * 1000),
                 end=int(segment.end * 1000),
                 text=text,
-                style=style_name,
+                style="Default",
             )
             subs.append(event)
 
@@ -230,7 +203,6 @@ class SubtitleWriter:
         self,
         segments: list[Segment],
         output_path: str,
-        speaker_mapping: dict[str, SpeakerMapping] | None = None,
     ) -> None:
         """
         Write ASS with advanced styling using ASSStyler.
@@ -238,7 +210,6 @@ class SubtitleWriter:
         Args:
             segments: List of segments.
             output_path: Output file path.
-            speaker_mapping: Speaker mappings for styling.
         """
         styler = self._get_ass_styler()
 
@@ -249,7 +220,6 @@ class SubtitleWriter:
         ass_content = styler.generate_ass(
             segments=segments,
             title=title,
-            speaker_mapping=speaker_mapping,
         )
 
         # Write to file
@@ -300,11 +270,6 @@ class SubtitleWriter:
             str: Formatted subtitle text.
         """
         parts = []
-
-        # Add speaker name if enabled
-        if self.include_speaker and segment.display_speaker:
-            if segment.display_speaker != "UNKNOWN":
-                parts.append(f"[{segment.display_speaker}]")
 
         # Add original text if enabled (wrapped in 『』 for clear separation)
         if self.include_original and segment.original_text:
@@ -358,157 +323,6 @@ class SubtitleWriter:
             marginl=20,
             marginr=20,
         )
-
-    def _create_speaker_styles(
-        self,
-        segments: list[Segment],
-        styles: dict[str, SubtitleStyle] | None,
-        speaker_mapping: dict[str, SpeakerMapping] | None,
-    ) -> dict[str, SSAStyle]:
-        """
-        Create ASS styles for speakers.
-
-        Args:
-            segments: Segments to extract speakers from.
-            styles: Predefined styles.
-            speaker_mapping: Speaker mappings with colors.
-
-        Returns:
-            dict: Style name to SSAStyle mapping.
-        """
-        speaker_styles = {}
-
-        # Collect unique speakers
-        speakers = set()
-        for segment in segments:
-            if segment.speaker_name:
-                speakers.add(segment.speaker_name)
-            elif segment.speaker_id and segment.speaker_id != "UNKNOWN":
-                speakers.add(segment.speaker_id)
-
-        for speaker in speakers:
-            safe_name = self._sanitize_style_name(speaker)
-
-            # Check for predefined style
-            if styles and speaker in styles:
-                style = styles[speaker]
-                speaker_styles[safe_name] = self._subtitle_style_to_ssa(style)
-                continue
-
-            # Check for speaker mapping with color
-            if speaker_mapping:
-                for mapping in speaker_mapping.values():
-                    if mapping.name == speaker or mapping.speaker_id == speaker:
-                        color = self._parse_color(mapping.color)
-                        style = self._create_default_ass_style()
-                        style.primarycolor = color
-                        speaker_styles[safe_name] = style
-                        break
-            else:
-                # Use default style with different name
-                speaker_styles[safe_name] = self._create_default_ass_style()
-
-        return speaker_styles
-
-    def _subtitle_style_to_ssa(self, style: SubtitleStyle) -> SSAStyle:
-        """Convert SubtitleStyle to pysubs2 SSAStyle."""
-        primary = self._parse_ass_color(style.primary_color)
-        outline = self._parse_ass_color(style.outline_color)
-        back = self._parse_ass_color(style.back_color)
-
-        return SSAStyle(
-            fontname=style.font_name,
-            fontsize=style.font_size,
-            primarycolor=primary,
-            outlinecolor=outline,
-            backcolor=back,
-            outline=style.outline_width,
-            shadow=style.shadow_depth,
-            bold=style.bold,
-            italic=style.italic,
-            alignment=style.alignment,
-            marginv=style.margin_v,
-            marginl=style.margin_l,
-            marginr=style.margin_r,
-        )
-
-    def _parse_color(self, color_hex: str) -> pysubs2.Color:
-        """
-        Parse hex color string to pysubs2 Color.
-
-        Args:
-            color_hex: Color in RRGGBB or AARRGGBB format.
-
-        Returns:
-            pysubs2.Color: Parsed color.
-        """
-        # Remove leading # if present
-        color_hex = color_hex.lstrip("#")
-
-        if len(color_hex) == 6:
-            r = int(color_hex[0:2], 16)
-            g = int(color_hex[2:4], 16)
-            b = int(color_hex[4:6], 16)
-            a = 0
-        elif len(color_hex) == 8:
-            a = int(color_hex[0:2], 16)
-            r = int(color_hex[2:4], 16)
-            g = int(color_hex[4:6], 16)
-            b = int(color_hex[6:8], 16)
-        else:
-            # Default to white
-            return pysubs2.Color(255, 255, 255, 0)
-
-        return pysubs2.Color(r, g, b, a)
-
-    def _parse_ass_color(self, color_str: str) -> pysubs2.Color:
-        """
-        Parse ASS color format (&HAABBGGRR).
-
-        Args:
-            color_str: ASS color string.
-
-        Returns:
-            pysubs2.Color: Parsed color.
-        """
-        # Handle &HAABBGGRR format
-        if color_str.startswith("&H"):
-            color_str = color_str[2:]
-
-        color_str = color_str.lstrip("&H").rstrip("&")
-
-        # Pad to 8 chars
-        color_str = color_str.zfill(8)
-
-        try:
-            a = int(color_str[0:2], 16)
-            b = int(color_str[2:4], 16)
-            g = int(color_str[4:6], 16)
-            r = int(color_str[6:8], 16)
-            return pysubs2.Color(r, g, b, a)
-        except ValueError:
-            return pysubs2.Color(255, 255, 255, 0)
-
-    def _sanitize_style_name(self, name: str) -> str:
-        """
-        Sanitize name for use as ASS style name.
-
-        Args:
-            name: Original name.
-
-        Returns:
-            str: Sanitized name safe for ASS.
-        """
-        # Replace problematic characters
-        safe = name.replace(" ", "_")
-        safe = safe.replace(",", "_")
-        safe = safe.replace(":", "_")
-
-        # Ensure it starts with letter
-        if safe and not safe[0].isalpha():
-            safe = "S_" + safe
-
-        return safe or "Default"
 
     def preview(
         self,
