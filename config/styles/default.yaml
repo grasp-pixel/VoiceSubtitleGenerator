@@ -1,0 +1,57 @@
+# Default ASS Style Preset
+# ========================
+
+name: Default
+
+# Base style for all speakers
+base:
+  font_name: Malgun Gothic
+  font_size: 48
+  outline_width: 2
+  shadow_depth: 1
+  margin_v: 30
+  margin_l: 20
+  margin_r: 20
+
+# Color format: AABBGGRR (ASS format, reversed RGB with alpha)
+# Alpha: 00 = opaque, FF = transparent
+
+styles:
+  Default:
+    primary_color: "&H00FFFFFF"      # White
+    outline_color: "&H00000000"      # Black
+    back_color: "&H80000000"         # Semi-transparent black
+    bold: false
+    italic: false
+    alignment: 2                     # Bottom center
+
+  Narrator:
+    primary_color: "&H00CCCCCC"      # Light gray
+    outline_color: "&H00000000"
+    back_color: "&H80000000"
+    bold: false
+    italic: true
+    alignment: 8                     # Top center
+
+  Emphasis:
+    primary_color: "&H0000FFFF"      # Yellow
+    outline_color: "&H00000000"
+    back_color: "&H80000000"
+    bold: true
+    italic: false
+    alignment: 2
+
+# Speaker-specific styles (applied via speaker mapping)
+speaker_styles:
+  # Example: Map SPEAKER_00 to this style
+  Heroine:
+    primary_color: "&H00B469FF"      # Pink (FF69B4 reversed)
+    bold: false
+
+  Protagonist:
+    primary_color: "&H00FFBF00"      # Sky blue (00BFFF reversed)
+    bold: true
+
+  SideCharacter:
+    primary_color: "&H0080FF80"      # Light green
+    bold: false

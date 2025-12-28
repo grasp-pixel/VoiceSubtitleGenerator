@@ -1,0 +1,37 @@
+# Auto detect text files and normalize line endings
+* text=auto
+
+# Source code - LF line endings
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+
+# Windows scripts - CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.mp3 binary
+*.wav binary
+*.flac binary
+*.ogg binary
+*.gguf binary
+
+# Linguist overrides (GitHub language stats)
+*.md linguist-documentation
+docs/* linguist-documentation
+tests/* linguist-detectable=false

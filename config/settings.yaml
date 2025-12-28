@@ -1,0 +1,81 @@
+app:
+  language: ko
+  theme: dark
+models:
+  path: ./models
+  auto_download: true
+speech:
+  stt:
+    model_size: large-v3-turbo
+    device: cuda
+    compute_type: float16
+    language: ja
+    beam_size: 5
+    vad_filter: true
+  diarization:
+    enabled: false
+    backend: pyannote
+    model_name: pyannote/speaker-diarization-3.1
+    device: cuda
+    min_speakers: 1
+    max_speakers: 4
+translation:
+  model_preset: qwen3-8b
+  model_path: ./models/Qwen_Qwen3-8B-Q4_K_M.gguf
+  n_gpu_layers: -1
+  n_ctx: 4096
+  max_tokens: 256
+  temperature: 0.30000001192092896
+  prompt_template: config/prompts/ja_to_ko.txt
+  enable_review: true
+  review_prompt_template: config/prompts/review.txt
+subtitle:
+  default_format: ass
+  include_original: true
+  include_speaker: true
+  ass:
+    video_width: 1920
+    video_height: 1080
+    default_font: Noto Sans KR
+    default_size: 48
+    original_font: Pretendard
+    original_size: 36
+    outline_width: 2
+    shadow_depth: 1
+processing:
+  workers: 1
+  normalize_audio: true
+  target_sample_rate: 16000
+segment:
+  enabled: false
+  max_chars: 80
+  max_duration: 4.0
+  split_punctuation: 。！？!?…
+  min_chars: 5
+  min_duration: 0.5
+  merge_gap: 0.3
+  merge_incomplete: true
+ui:
+  width: 1281
+  height: 1054
+  font_size: 18
+  remember_position: true
+  hide_warnings: false
+speaker_styles:
+  default:
+    color: FFFFFF
+    bold: false
+    italic: false
+    position: bottom_center
+  protagonist:
+    color: 00BFFF
+    bold: true
+    position: bottom_center
+  heroine:
+    color: FF69B4
+    bold: false
+    position: bottom_center
+  narration:
+    color: CCCCCC
+    italic: true
+    position: top_center

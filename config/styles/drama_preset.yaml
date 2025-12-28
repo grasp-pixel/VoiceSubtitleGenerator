@@ -1,0 +1,69 @@
+# Drama style preset
+# Speaker-specific colors and styles for drama/anime subtitles
+
+name: Drama Preset
+description: Colorful speaker-based styling for drama content
+
+video_width: 1920
+video_height: 1080
+
+base:
+  font: Malgun Gothic
+  size: 48
+  outline: 2.0
+  shadow: 1.0
+
+speakers:
+  # Main characters
+  히로인:
+    color: "FF69B4"    # Hot pink
+    bold: false
+    italic: false
+    position: bottom
+    size_modifier: 1.0
+
+  주인공:
+    color: "00BFFF"    # Deep sky blue
+    bold: true
+    italic: false
+    position: bottom
+    size_modifier: 1.0
+
+  나레이션:
+    color: "CCCCCC"    # Light gray
+    bold: false
+    italic: true
+    position: top
+    size_modifier: 0.9
+
+  # Supporting characters
+  친구A:
+    color: "90EE90"    # Light green
+    bold: false
+    italic: false
+    position: bottom
+    size_modifier: 1.0
+
+  친구B:
+    color: "FFD700"    # Gold
+    bold: false
+    italic: false
+    position: bottom
+    size_modifier: 1.0
+
+# Keyword-based inline styling
+keywords:
+  # Emphasize exclamations
+  - pattern: "！|!"
+    bold: true
+    size_modifier: 1.1
+
+  # Italicize thoughts (text in parentheses)
+  - pattern: "\\(.*?\\)|（.*?）"
+    italic: true
+    color: "AAAAAA"
+
+  # Highlight sound effects
+  - pattern: "\\*.*?\\*"
+    bold: true
+    color: "FFA500"
