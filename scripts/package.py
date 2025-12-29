@@ -31,6 +31,8 @@ INCLUDE = [
     "fonts",
     "main.py",
     "run.bat",
+    "build_cuda.bat",
+    "build_cuda.ps1",
     "pyproject.toml",
     "uv.lock",
     "README.md",

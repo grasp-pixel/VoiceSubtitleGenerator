@@ -7,10 +7,14 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+import static_ffmpeg
 
 from .models import AudioInfo
 
 logger = logging.getLogger(__name__)
+
+# Get ffmpeg/ffprobe paths from static-ffmpeg package
+_FFMPEG_PATH, _FFPROBE_PATH = static_ffmpeg.run.get_or_fetch_platform_executables_else_raise()
 
 
 class AudioFormatError(Exception):
@@ -97,7 +101,7 @@ class AudioLoader:
         """
         # ffmpeg command: convert to 16-bit PCM WAV, mono, target sample rate
         cmd = [
-            "ffmpeg",
+            _FFMPEG_PATH,
             "-i", audio_path,
             "-vn",  # No video
             "-ac", "1",  # Mono
@@ -116,8 +120,6 @@ class AudioLoader:
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode("utf-8", errors="replace")
             raise AudioFormatError(f"ffmpeg failed: {stderr}")
-        except FileNotFoundError:
-            raise AudioFormatError("ffmpeg not found. Please install ffmpeg.")
 
         # Read WAV data from stdout
         import io
@@ -172,7 +174,7 @@ class AudioLoader:
             import json
 
             cmd = [
-                "ffprobe",
+                _FFPROBE_PATH,
                 "-v", "quiet",
                 "-print_format", "json",
                 "-show_format",
@@ -247,7 +249,7 @@ class AudioLoader:
         duration = end - start
 
         cmd = [
-            "ffmpeg",
+            _FFMPEG_PATH,
             "-ss", str(start),
             "-i", str(path),
             "-t", str(duration),
