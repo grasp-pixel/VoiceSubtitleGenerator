@@ -51,8 +51,7 @@ winget install Ninja-build.Ninja
 ### 배포 버전 (권장)
 
 1. `VoiceSubtitleGenerator_vX.X.X.zip` 압축 해제
-2. `models/` 폴더에 GGUF 모델 파일 배치
-3. `run.bat` 더블클릭
+2. `run.bat` 실행
 
 첫 실행 시:
 - Python 환경 자동 구성 (uv 사용)
