@@ -57,11 +57,14 @@ class SubtitlePipeline:
 
         self._initialized = False
 
-    def initialize(self) -> None:
+    def initialize(self, skip_translation: bool = False) -> None:
         """
         Initialize all pipeline components.
 
         Loads models into memory. Call before processing.
+
+        Args:
+            skip_translation: If True, skip loading translation model.
         """
         if self._initialized:
             return
@@ -78,17 +81,20 @@ class SubtitlePipeline:
         self._speech_engine = SpeechEngine.from_config(self.config.speech)
         self._speech_engine.load_models(self.config.speech.stt.language)
 
-        # Translator - resolve model path based on preset
-        model_path = self.config.translation.get_model_path(self.config.models.path)
-        self._translator = Translator(
-            model_path=model_path,
-            n_gpu_layers=self.config.translation.n_gpu_layers,
-            n_ctx=self.config.translation.n_ctx,
-            prompt_template=self.config.translation.get_prompt_template(),
-            review_prompt_template=self.config.translation.get_review_prompt_template(),
-            enable_review=self.config.translation.enable_review,
-        )
-        self._translator.load_model()
+        # Translator - only load if translation is needed
+        if not skip_translation:
+            model_path = self.config.translation.get_model_path(self.config.models.path)
+            self._translator = Translator(
+                model_path=model_path,
+                n_gpu_layers=self.config.translation.n_gpu_layers,
+                n_ctx=self.config.translation.n_ctx,
+                prompt_template=self.config.translation.get_prompt_template(),
+                review_prompt_template=self.config.translation.get_review_prompt_template(),
+                enable_review=self.config.translation.enable_review,
+            )
+            self._translator.load_model()
+        else:
+            logger.info("Skipping translator initialization (transcription-only mode)")
 
         # Subtitle writer
         self._subtitle_writer = SubtitleWriter.from_config(self.config.subtitle)
@@ -147,6 +153,7 @@ class SubtitlePipeline:
         output_path: str | None = None,
         output_format: str | None = None,
         callbacks: PipelineCallbacks | None = None,
+        skip_translation: bool = False,
     ) -> ProcessResult:
         """
         Process a single audio file.
@@ -156,12 +163,13 @@ class SubtitlePipeline:
             output_path: Output subtitle path. Auto-generated if None.
             output_format: Output format (srt, ass, vtt).
             callbacks: Progress callbacks.
+            skip_translation: Skip translation step (transcription only).
 
         Returns:
             ProcessResult: Processing result.
         """
         if not self._initialized:
-            self.initialize()
+            self.initialize(skip_translation=skip_translation)
 
         audio_path = str(Path(audio_path).absolute())
         output_format = output_format or self.config.subtitle.default_format
@@ -221,62 +229,89 @@ class SubtitlePipeline:
                     )
                     logger.info(f"Merged segments: {pre_merge_count} -> {len(segments)}")
 
-            # Stage 3: Translation
-            self._notify_stage(callbacks, ProcessingStage.TRANSLATING)
+            # Stage 3: Translation (skip if transcription only)
+            if not skip_translation:
+                # Lazy load translator if needed (e.g., switched from transcription-only mode)
+                if self._translator is None:
+                    self._notify_log(callbacks, "번역 모델 로딩 중...")
+                    model_path = self.config.translation.get_model_path(
+                        self.config.models.path
+                    )
+                    self._translator = Translator(
+                        model_path=model_path,
+                        n_gpu_layers=self.config.translation.n_gpu_layers,
+                        n_ctx=self.config.translation.n_ctx,
+                        prompt_template=self.config.translation.get_prompt_template(),
+                        review_prompt_template=self.config.translation.get_review_prompt_template(),
+                        enable_review=self.config.translation.enable_review,
+                    )
+                    self._translator.load_model()
+                    self._notify_log(callbacks, "번역 모델 로딩 완료", "success")
 
-            # Adjust progress range based on whether review is enabled
-            enable_review = self.config.translation.enable_review
-            if enable_review:
-                # Translation: 50% -> 70%, Review: 70% -> 90%
-                trans_start, trans_end = 0.5, 0.7
-                review_start, review_end = 0.7, 0.9
-            else:
-                # Translation: 50% -> 90%
-                trans_start, trans_end = 0.5, 0.9
+                self._notify_stage(callbacks, ProcessingStage.TRANSLATING)
 
-            self._notify_log(callbacks, f"번역 시작 (0/{len(segments)})...")
+                # Adjust progress range based on whether review is enabled
+                enable_review = self.config.translation.enable_review
+                if enable_review:
+                    # Translation: 50% -> 70%, Review: 70% -> 90%
+                    trans_start, trans_end = 0.5, 0.7
+                    review_start, review_end = 0.7, 0.9
+                else:
+                    # Translation: 50% -> 90%
+                    trans_start, trans_end = 0.5, 0.9
 
-            translated_count = [0]
+                self._notify_log(callbacks, f"번역 시작 (0/{len(segments)})...")
 
-            def translation_progress(p: float):
-                self._notify_progress(
-                    callbacks, trans_start + p * (trans_end - trans_start)
+                translated_count = [0]
+
+                def translation_progress(p: float):
+                    self._notify_progress(
+                        callbacks, trans_start + p * (trans_end - trans_start)
+                    )
+                    new_count = int(p * len(segments))
+                    if new_count > translated_count[0]:
+                        translated_count[0] = new_count
+                        if new_count % 10 == 0 or new_count == len(segments):
+                            self._notify_log(
+                                callbacks, f"번역 진행 중... ({new_count}/{len(segments)})"
+                            )
+
+                reviewed_count = [0]
+
+                def review_progress(p: float):
+                    self._notify_progress(
+                        callbacks, review_start + p * (review_end - review_start)
+                    )
+                    new_count = int(p * len(segments))
+                    if new_count > reviewed_count[0]:
+                        reviewed_count[0] = new_count
+                        if new_count % 10 == 0 or new_count == len(segments):
+                            self._notify_log(
+                                callbacks, f"검수 진행 중... ({new_count}/{len(segments)})"
+                            )
+
+                # Sync enable_review from config to translator
+                # (config may have changed after pipeline initialization)
+                self._translator.enable_review = enable_review
+
+                self._translator.translate_segments(
+                    segments,
+                    max_tokens=self.config.translation.max_tokens,
+                    temperature=self.config.translation.temperature,
+                    progress_callback=translation_progress,
+                    review_callback=review_progress if enable_review else None,
                 )
-                new_count = int(p * len(segments))
-                if new_count > translated_count[0]:
-                    translated_count[0] = new_count
-                    if new_count % 10 == 0 or new_count == len(segments):
-                        self._notify_log(
-                            callbacks, f"번역 진행 중... ({new_count}/{len(segments)})"
-                        )
 
-            reviewed_count = [0]
-
-            def review_progress(p: float):
-                self._notify_progress(
-                    callbacks, review_start + p * (review_end - review_start)
-                )
-                new_count = int(p * len(segments))
-                if new_count > reviewed_count[0]:
-                    reviewed_count[0] = new_count
-                    if new_count % 10 == 0 or new_count == len(segments):
-                        self._notify_log(
-                            callbacks, f"검수 진행 중... ({new_count}/{len(segments)})"
-                        )
-
-            self._translator.translate_segments(
-                segments,
-                max_tokens=self.config.translation.max_tokens,
-                temperature=self.config.translation.temperature,
-                progress_callback=translation_progress,
-                review_callback=review_progress if enable_review else None,
-            )
-
-            if enable_review:
-                self._notify_log(callbacks, "번역 및 검수 완료", "success")
+                if enable_review:
+                    self._notify_log(callbacks, "번역 및 검수 완료", "success")
+                else:
+                    self._notify_log(callbacks, "번역 완료", "success")
+                logger.info("Translation complete")
             else:
-                self._notify_log(callbacks, "번역 완료", "success")
-            logger.info("Translation complete")
+                # Skip translation - just update progress
+                self._notify_progress(callbacks, 0.9)
+                self._notify_log(callbacks, "번역 스킵 (원문 자막 모드)", "info")
+                logger.info("Translation skipped (transcription only)")
 
             # Stage 4: Writing
             self._notify_stage(callbacks, ProcessingStage.WRITING)
@@ -324,6 +359,7 @@ class SubtitlePipeline:
         output_format: str | None = None,
         output_dir: str | None = None,
         callbacks: BatchCallbacks | None = None,
+        skip_translation: bool = False,
     ) -> list[ProcessResult]:
         """
         Process multiple audio files.
@@ -333,12 +369,13 @@ class SubtitlePipeline:
             output_format: Output format for all files.
             output_dir: Output directory (used when files is list of strings).
             callbacks: Batch processing callbacks.
+            skip_translation: Skip translation step (transcription only).
 
         Returns:
             list[ProcessResult]: Results for each file.
         """
         if not self._initialized:
-            self.initialize()
+            self.initialize(skip_translation=skip_translation)
 
         # Normalize file list
         file_pairs: list[tuple[str, str | None]] = []
@@ -370,6 +407,7 @@ class SubtitlePipeline:
                 output_path=output_path,
                 output_format=output_format,
                 callbacks=callbacks.pipeline_callbacks if callbacks else None,
+                skip_translation=skip_translation,
             )
 
             results.append(result)
@@ -435,6 +473,9 @@ class SubtitlePipeline:
             self.initialize()
 
         self._notify_stage(callbacks, ProcessingStage.TRANSLATING)
+
+        # Sync enable_review from config to translator
+        self._translator.enable_review = self.config.translation.enable_review
 
         self._translator.translate_segments(
             segments,

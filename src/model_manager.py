@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from .config import TRANSLATION_MODEL_PRESETS, TranslationModelPreset
+from .utils import get_app_path
 
 logger = logging.getLogger(__name__)
 
@@ -99,9 +100,9 @@ class ModelManager:
         Initialize model manager.
 
         Args:
-            base_path: Base path for models. Defaults to current directory.
+            base_path: Base path for models. Defaults to app directory.
         """
-        self.base_path = Path(base_path) if base_path else Path.cwd()
+        self.base_path = Path(base_path) if base_path else get_app_path()
 
     def check_model(self, model_path: str) -> ModelStatus:
         """

@@ -58,6 +58,7 @@ class MainWindow:
         self._pipeline = pipeline
         self._is_processing = False
         self._should_cancel = False
+        self._skip_translation = False  # Flag for transcription-only mode
 
         # Thread-safe pending files queue
         self._pending_files: list[str] = []
@@ -160,10 +161,16 @@ class MainWindow:
 
             with dpg.menu(label="처리"):
                 dpg.add_menu_item(
-                    label="처리 시작",
-                    callback=self._on_start_processing,
+                    label="자막 생성",
+                    callback=self._on_start_transcription,
                     shortcut="F5",
                 )
+                dpg.add_menu_item(
+                    label="번역자막 생성",
+                    callback=self._on_start_translation,
+                    shortcut="F6",
+                )
+                dpg.add_separator()
                 dpg.add_menu_item(
                     label="취소",
                     callback=self._on_cancel_processing,
@@ -217,10 +224,15 @@ class MainWindow:
 
             dpg.add_spacer(width=20)
 
-            self._start_button = dpg.add_button(
-                label="시작",
-                callback=self._on_start_processing,
+            self._transcribe_button = dpg.add_button(
+                label="자막 생성",
+                callback=self._on_start_transcription,
                 width=100,
+            )
+            self._translate_button = dpg.add_button(
+                label="번역자막 생성",
+                callback=self._on_start_translation,
+                width=120,
             )
             self._cancel_button = dpg.add_button(
                 label="취소",
@@ -396,8 +408,16 @@ class MainWindow:
         if item.status == FileStatus.DONE and item.segments:
             self._preview_panel.set_segments(item.segments)
 
-    def _on_start_processing(self) -> None:
-        """Handle start processing action."""
+    def _on_start_transcription(self) -> None:
+        """Handle transcription-only (no translation) action."""
+        self._start_processing(skip_translation=True)
+
+    def _on_start_translation(self) -> None:
+        """Handle full processing with translation action."""
+        self._start_processing(skip_translation=False)
+
+    def _start_processing(self, skip_translation: bool = False) -> None:
+        """Start processing with specified mode."""
         if self._is_processing:
             return
 
@@ -412,8 +432,10 @@ class MainWindow:
         # Start processing in background thread
         self._is_processing = True
         self._should_cancel = False
+        self._skip_translation = skip_translation
 
-        dpg.configure_item(self._start_button, enabled=False)
+        dpg.configure_item(self._transcribe_button, enabled=False)
+        dpg.configure_item(self._translate_button, enabled=False)
         dpg.configure_item(self._cancel_button, enabled=True)
 
         thread = threading.Thread(target=self._process_files)
@@ -433,7 +455,8 @@ class MainWindow:
         try:
             # Reset processing panel
             self._processing_panel.reset()
-            self._log_panel.info("처리 시작...")
+            mode_str = "자막 생성" if self._skip_translation else "번역자막 생성"
+            self._log_panel.info(f"처리 시작... ({mode_str})")
 
             # Start initialization stage (index 0)
             self._processing_panel.set_stage(0)
@@ -443,8 +466,11 @@ class MainWindow:
                 self._log_panel.info("파이프라인 초기화 중...")
                 self._pipeline = SubtitlePipeline(config=self.config)
 
-            self._log_panel.info("모델 로딩 중... (시간이 걸릴 수 있습니다)")
-            self._pipeline.initialize()
+            if self._skip_translation:
+                self._log_panel.info("Whisper 모델 로딩 중...")
+            else:
+                self._log_panel.info("모델 로딩 중... (시간이 걸릴 수 있습니다)")
+            self._pipeline.initialize(skip_translation=self._skip_translation)
             self._log_panel.success("모델 로딩 완료")
 
             # End initialization stage
@@ -452,20 +478,27 @@ class MainWindow:
 
             # Update device info in processing panel
             whisper_device = self._pipeline.speech_engine.device
-            translator_using_gpu = self._pipeline.translator.is_using_gpu
+            translator_using_gpu = (
+                self._pipeline.translator.is_using_gpu
+                if self._pipeline.translator else None
+            )
             self._processing_panel.set_device_info(whisper_device, translator_using_gpu)
 
             # Log device info
             if whisper_device.lower() not in ("cuda", "gpu"):
                 self._log_panel.warning("Whisper: CPU 모드로 실행 중 (느림)")
-            if not translator_using_gpu:
+            if not self._skip_translation and not translator_using_gpu:
                 self._log_panel.warning("번역: CPU 모드로 실행 중 (느림)")
 
             # Update status
             dpg.set_value(self._status_labels["whisper"], "Whisper: 로드됨")
             dpg.configure_item(self._status_labels["whisper"], color=THEME.success)
-            dpg.set_value(self._status_labels["llm"], "번역: 로드됨")
-            dpg.configure_item(self._status_labels["llm"], color=THEME.success)
+            if self._skip_translation:
+                dpg.set_value(self._status_labels["llm"], "번역: 사용 안 함")
+                dpg.configure_item(self._status_labels["llm"], color=THEME.text_secondary)
+            else:
+                dpg.set_value(self._status_labels["llm"], "번역: 로드됨")
+                dpg.configure_item(self._status_labels["llm"], color=THEME.success)
 
             # Get files to process
             pending_files = self._file_list.get_pending_files()
@@ -528,6 +561,7 @@ class MainWindow:
                         output_path=str(output_path),
                         output_format=output_format,
                         callbacks=callbacks,
+                        skip_translation=self._skip_translation,
                     )
 
                     if result.success:
@@ -578,7 +612,8 @@ class MainWindow:
 
         finally:
             self._is_processing = False
-            dpg.configure_item(self._start_button, enabled=True)
+            dpg.configure_item(self._transcribe_button, enabled=True)
+            dpg.configure_item(self._translate_button, enabled=True)
             dpg.configure_item(self._cancel_button, enabled=False)
 
     def _on_open_settings(self) -> None:

@@ -554,7 +554,7 @@ class ProcessingPanel:
                 dpg.configure_item(self._speed_label, color=THEME.warning)
 
     def set_device_info(
-        self, whisper_device: str, translator_using_gpu: bool
+        self, whisper_device: str, translator_using_gpu: bool | None
     ) -> None:
         """
         Set device information for Whisper and Translator.
@@ -563,14 +563,19 @@ class ProcessingPanel:
 
         Args:
             whisper_device: Whisper device ("cuda" or "cpu").
-            translator_using_gpu: Whether translator is actually using GPU.
+            translator_using_gpu: Whether translator is using GPU (None if not loaded).
         """
         # Whisper device
         whisper_is_gpu = whisper_device.lower() in ("cuda", "gpu")
         self._device_info["transcribing"] = "GPU" if whisper_is_gpu else "CPU"
 
-        # Translator device
-        self._device_info["translating"] = "GPU" if translator_using_gpu else "CPU"
+        # Translator device (None means not loaded/not used)
+        if translator_using_gpu is None:
+            self._device_info["translating"] = "-"
+        elif translator_using_gpu:
+            self._device_info["translating"] = "GPU"
+        else:
+            self._device_info["translating"] = "CPU"
 
         # Update UI labels
         for stage_id in ("transcribing", "translating"):
