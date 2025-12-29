@@ -38,6 +38,7 @@ class SubtitleWriter:
         original_font: str = "Malgun Gothic",
         original_size: int = 36,
         style_preset: StylePreset | None = None,
+        enable_position_styling: bool = True,
     ):
         """
         Initialize subtitle writer.
@@ -51,6 +52,7 @@ class SubtitleWriter:
             original_font: Font for original text.
             original_size: Font size for original text.
             style_preset: Optional style preset for ASS styling.
+            enable_position_styling: Enable left/right alignment based on audio position.
         """
         self.include_original = include_original
         self.video_width = video_width
@@ -60,6 +62,7 @@ class SubtitleWriter:
         self.original_font = original_font
         self.original_size = original_size
         self.style_preset = style_preset
+        self.enable_position_styling = enable_position_styling
         self._ass_styler: ASSStyler | None = None
 
     @classmethod
@@ -73,6 +76,7 @@ class SubtitleWriter:
             default_size=config.ass.default_size,
             original_font=config.ass.original_font,
             original_size=config.ass.original_size,
+            enable_position_styling=config.ass.enable_position_styling,
         )
 
     def load_style_preset(self, preset_path: str | Path) -> None:
@@ -325,6 +329,9 @@ class SubtitleWriter:
         Returns:
             str: ASS alignment tag (e.g., "{\\an1}") or empty string.
         """
+        if not self.enable_position_styling:
+            return ""  # Position styling disabled
+
         if position == AudioPosition.LEFT:
             return "{\\an1}"  # Bottom-left
         elif position == AudioPosition.RIGHT:

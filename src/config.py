@@ -149,6 +149,8 @@ class SubtitleASSConfig:
     original_size: int = 36  # Smaller size for original text
     outline_width: float = 2.0
     shadow_depth: float = 1.0
+    # Position-based styling (stereo audio)
+    enable_position_styling: bool = True  # Enable left/right alignment based on audio
 
 
 @dataclass
@@ -238,9 +240,14 @@ class ConfigManager:
 
         Args:
             config_path: Path to config file. Uses default if not specified.
+                         Relative paths are resolved from app root directory.
         """
         if config_path:
-            self.config_path = Path(config_path)
+            path = Path(config_path)
+            # Resolve relative paths from app root, not CWD
+            if not path.is_absolute():
+                path = get_app_path() / path
+            self.config_path = path
         else:
             self.config_path = self.get_default_config_path()
         self._config: AppConfig | None = None
@@ -379,6 +386,7 @@ class ConfigManager:
                     "original_size": config.subtitle.ass.original_size,
                     "outline_width": config.subtitle.ass.outline_width,
                     "shadow_depth": config.subtitle.ass.shadow_depth,
+                    "enable_position_styling": config.subtitle.ass.enable_position_styling,
                 },
             },
             "processing": {

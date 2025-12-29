@@ -117,13 +117,21 @@ class FasterWhisperEngine(STTEngine):
         if self._model is None:
             return
 
-        self._model = None
-        gc.collect()
+        try:
+            # Explicitly delete the model first
+            model = self._model
+            self._model = None
+            del model
+            gc.collect()
 
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+            # Only call torch.cuda operations if CUDA is initialized
+            if torch.cuda.is_available() and torch.cuda.is_initialized():
+                torch.cuda.empty_cache()
 
-        logger.info("Faster-whisper model unloaded")
+            logger.info("Faster-whisper model unloaded")
+        except Exception as e:
+            logger.warning(f"Error during model unload (non-fatal): {e}")
+            self._model = None
 
     def transcribe(
         self,

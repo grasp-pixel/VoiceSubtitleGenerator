@@ -59,6 +59,7 @@ class MainWindow:
         self._is_processing = False
         self._should_cancel = False
         self._skip_translation = False  # Flag for transcription-only mode
+        self._config_changed = False  # Flag to recreate pipeline on next processing
 
         # Thread-safe pending files queue
         self._pending_files: list[str] = []
@@ -159,11 +160,11 @@ class MainWindow:
 
             with dpg.menu(label="처리"):
                 dpg.add_menu_item(
-                    label="자막 생성",
+                    label="원어 자막 생성",
                     callback=self._on_start_transcription,
                 )
                 dpg.add_menu_item(
-                    label="번역자막 생성",
+                    label="번역 자막 생성",
                     callback=self._on_start_translation,
                 )
                 dpg.add_separator()
@@ -220,12 +221,12 @@ class MainWindow:
             dpg.add_spacer(width=20)
 
             self._transcribe_button = dpg.add_button(
-                label="자막 생성",
+                label="원어 자막 생성",
                 callback=self._on_start_transcription,
                 width=100,
             )
             self._translate_button = dpg.add_button(
-                label="번역자막 생성",
+                label="번역 자막 생성",
                 callback=self._on_start_translation,
                 width=120,
             )
@@ -456,8 +457,16 @@ class MainWindow:
             # Start initialization stage (index 0)
             self._processing_panel.set_stage(0)
 
-            # Initialize pipeline if needed
-            if self._pipeline is None:
+            # Initialize pipeline if needed (or recreate if config changed)
+            if self._pipeline is None or self._config_changed:
+                if self._config_changed and self._pipeline is not None:
+                    self._log_panel.info("설정 변경으로 파이프라인 재생성...")
+                    # Cleanup old pipeline in worker thread (safer than UI thread)
+                    try:
+                        self._pipeline.cleanup()
+                    except Exception as e:
+                        logger.warning(f"Pipeline cleanup error (ignored): {e}")
+                    self._config_changed = False
                 self._log_panel.info("파이프라인 초기화 중...")
                 self._pipeline = SubtitlePipeline(config=self.config)
 
@@ -635,10 +644,10 @@ class MainWindow:
         if self._model_dialog:
             self._model_dialog.config = config
 
-        # Recreate pipeline with new config (only if not processing)
+        # Mark pipeline config as stale - will be recreated on next processing start
+        # Don't set pipeline to None here - even that triggers GC which crashes CUDA
         if self._pipeline and not self._is_processing:
-            self._pipeline.cleanup()
-            self._pipeline = None
+            self._config_changed = True
 
     def _on_about(self) -> None:
         """Show about dialog."""

@@ -20,10 +20,10 @@ translation:
   max_tokens: 256
   temperature: 0.30000001192092896
   prompt_template: config/prompts/ja_to_ko.txt
-  enable_review: true
+  enable_review: false
   review_prompt_template: config/prompts/review.txt
 subtitle:
-  default_format: ass
+  default_format: srt
   include_original: true
   ass:
     video_width: 1920
@@ -34,6 +34,7 @@ subtitle:
     original_size: 36
     outline_width: 2
     shadow_depth: 1
+    enable_position_styling: true
 processing:
   workers: 1
   normalize_audio: true

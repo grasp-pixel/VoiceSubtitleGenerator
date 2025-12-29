@@ -4,6 +4,8 @@ from typing import Callable
 
 import dearpygui.dearpygui as dpg
 
+from pathlib import Path
+
 from src.config import (
     AppConfig,
     ConfigManager,
@@ -11,6 +13,9 @@ from src.config import (
     TRANSLATION_MODEL_PRESETS,
 )
 from src.font_manager import get_font_manager
+
+# Prompts directory path
+PROMPTS_DIR = Path(__file__).parent.parent / "config" / "prompts"
 
 from .components import THEME, FileDialogHelper
 
@@ -72,8 +77,8 @@ class SettingsDialog:
         """Build the dialog UI."""
         viewport_width = dpg.get_viewport_width()
         viewport_height = dpg.get_viewport_height()
-        dialog_width = 600
-        dialog_height = 720
+        dialog_width = 650
+        dialog_height = 780
 
         with dpg.window(
             label="환경설정",
@@ -92,6 +97,7 @@ class SettingsDialog:
                 self._build_general_tab()
                 self._build_stt_tab()
                 self._build_translation_tab()
+                self._build_prompt_tab()
                 self._build_subtitle_tab()
 
             # Buttons
@@ -371,6 +377,63 @@ class SettingsDialog:
                 color=THEME.warning,
             )
 
+    def _build_prompt_tab(self) -> None:
+        """Build prompt editing tab."""
+        with dpg.tab(label="프롬프트"):
+            dpg.add_spacer(height=10)
+
+            dpg.add_text("번역 프롬프트 선택:", color=THEME.text_primary)
+            dpg.add_text(
+                "프롬프트 파일을 선택하고 편집할 수 있습니다.",
+                color=THEME.text_secondary,
+            )
+            dpg.add_spacer(height=5)
+
+            # Scan prompt files in prompts directory
+            self._prompt_files = self._scan_prompt_files()
+            prompt_names = [p.stem for p in self._prompt_files]
+
+            # Find current prompt index
+            current_prompt_path = self._config.translation.prompt_template
+            current_idx = 0
+            for i, pf in enumerate(self._prompt_files):
+                # Check both relative and absolute path match
+                if pf.name == Path(current_prompt_path).name:
+                    current_idx = i
+                    break
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("프롬프트 파일:", color=THEME.text_secondary)
+                self._inputs["prompt_file"] = dpg.add_combo(
+                    items=prompt_names,
+                    default_value=prompt_names[current_idx] if prompt_names else "",
+                    width=300,
+                    callback=self._on_prompt_file_changed,
+                )
+
+            dpg.add_spacer(height=10)
+
+            # Load current prompt content
+            prompt_content = ""
+            if self._prompt_files:
+                current_file = self._prompt_files[current_idx]
+                if current_file.exists():
+                    prompt_content = current_file.read_text(encoding="utf-8")
+
+            self._inputs["prompt_text"] = dpg.add_input_text(
+                default_value=prompt_content,
+                multiline=True,
+                width=-1,
+                height=380,
+                tab_input=True,
+            )
+
+            dpg.add_spacer(height=5)
+            self._prompt_file_label = dpg.add_text(
+                f"파일: {self._prompt_files[current_idx] if self._prompt_files else 'N/A'}",
+                color=THEME.text_secondary,
+            )
+
     def _build_subtitle_tab(self) -> None:
         """Build subtitle settings tab."""
         with dpg.tab(label="자막"):
@@ -456,6 +519,19 @@ class SettingsDialog:
                 )
 
             dpg.add_spacer(height=10)
+            dpg.add_text("스테레오 위치 스타일링", color=THEME.accent)
+            dpg.add_separator()
+
+            self._inputs["enable_position_styling"] = dpg.add_checkbox(
+                label="좌/우 오디오 위치에 따라 자막 정렬",
+                default_value=self._config.subtitle.ass.enable_position_styling,
+            )
+            dpg.add_text(
+                "좌측 오디오 → 좌측 정렬, 우측 오디오 → 우측 정렬",
+                color=THEME.text_secondary,
+            )
+
+            dpg.add_spacer(height=10)
             dpg.add_text("원문 표시 설정", color=THEME.accent)
             dpg.add_separator()
 
@@ -496,6 +572,30 @@ class SettingsDialog:
                     min_value=10,
                     max_value=100,
                 )
+
+    def _scan_prompt_files(self) -> list[Path]:
+        """Scan prompt files in prompts directory."""
+        if not PROMPTS_DIR.exists():
+            return []
+        # Get all .txt files, sorted by name
+        files = sorted(PROMPTS_DIR.glob("*.txt"))
+        return files
+
+    def _on_prompt_file_changed(self, sender, app_data, user_data) -> None:
+        """Handle prompt file selection change."""
+        # Find the selected file
+        selected_name = app_data
+        selected_file = None
+        for pf in self._prompt_files:
+            if pf.stem == selected_name:
+                selected_file = pf
+                break
+
+        if selected_file and selected_file.exists():
+            # Load and display the prompt content
+            content = selected_file.read_text(encoding="utf-8")
+            dpg.set_value(self._inputs["prompt_text"], content)
+            dpg.set_value(self._prompt_file_label, f"파일: {selected_file}")
 
     def _update_font_status(self, display_name: str) -> None:
         """Update font status display."""
@@ -731,6 +831,21 @@ class SettingsDialog:
             self._inputs["enable_review"]
         )
 
+        # Save prompt file and update config path
+        selected_prompt_name = dpg.get_value(self._inputs["prompt_file"])
+        selected_prompt_file = None
+        for pf in self._prompt_files:
+            if pf.stem == selected_prompt_name:
+                selected_prompt_file = pf
+                break
+
+        if selected_prompt_file:
+            # Save prompt content to file
+            prompt_text = dpg.get_value(self._inputs["prompt_text"])
+            selected_prompt_file.write_text(prompt_text, encoding="utf-8")
+            # Update config with relative path
+            self._config.translation.prompt_template = f"config/prompts/{selected_prompt_file.name}"
+
         self._config.subtitle.default_format = dpg.get_value(
             self._inputs["default_format"]
         )
@@ -761,6 +876,9 @@ class SettingsDialog:
         )
         self._config.subtitle.ass.original_size = dpg.get_value(
             self._inputs["original_size"]
+        )
+        self._config.subtitle.ass.enable_position_styling = dpg.get_value(
+            self._inputs["enable_position_styling"]
         )
 
         # Save to file

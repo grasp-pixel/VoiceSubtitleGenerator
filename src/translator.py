@@ -119,9 +119,18 @@ class Translator:
 
     def unload_model(self) -> None:
         """Unload model and free memory."""
-        self._model = None
-        gc.collect()
-        logger.info("Translation model unloaded")
+        if self._model is None:
+            return
+
+        try:
+            model = self._model
+            self._model = None
+            del model
+            gc.collect()
+            logger.info("Translation model unloaded")
+        except Exception as e:
+            logger.warning(f"Error during model unload (non-fatal): {e}")
+            self._model = None
 
     def translate(
         self,
