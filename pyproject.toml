@@ -1,6 +1,6 @@
 [project]
 name = "voice-subtitle-generator"
-version = "0.1.0"
+version = "0.1.1"
 description = "Japanese audio to Korean subtitle generator"
 requires-python = ">=3.12,<3.14"
 dependencies = [
