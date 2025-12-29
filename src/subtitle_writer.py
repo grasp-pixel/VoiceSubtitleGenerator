@@ -8,6 +8,7 @@ import pysubs2
 from pysubs2 import SSAFile, SSAStyle, SSAEvent
 
 from .ass_styler import ASSStyler, StylePreset
+from .audio_analyzer import AudioPosition
 from .config import SubtitleConfig
 from .models import Segment, SubtitleStyle
 
@@ -271,6 +272,12 @@ class SubtitleWriter:
         """
         parts = []
 
+        # Add position alignment tag for ASS (binaural audio support)
+        if for_ass and segment.position is not None:
+            alignment_tag = self._get_position_alignment_tag(segment.position)
+            if alignment_tag:
+                parts.append(alignment_tag)
+
         # Add original text if enabled (wrapped in 『』 for clear separation)
         if self.include_original and segment.original_text:
             if for_ass:
@@ -307,6 +314,25 @@ class SubtitleWriter:
             text = text.replace("\n", "\\N")
 
         return text.strip()
+
+    def _get_position_alignment_tag(self, position: AudioPosition) -> str:
+        """
+        Get ASS alignment override tag based on audio position.
+
+        Args:
+            position: Audio position (LEFT/CENTER/RIGHT).
+
+        Returns:
+            str: ASS alignment tag (e.g., "{\\an1}") or empty string.
+        """
+        if position == AudioPosition.LEFT:
+            return "{\\an1}"  # Bottom-left
+        elif position == AudioPosition.RIGHT:
+            return "{\\an3}"  # Bottom-right
+        elif position == AudioPosition.CENTER:
+            return ""  # Use default (bottom-center), no override needed
+        else:
+            return ""  # UNKNOWN - use default
 
     def _create_default_ass_style(self) -> SSAStyle:
         """Create default ASS style."""

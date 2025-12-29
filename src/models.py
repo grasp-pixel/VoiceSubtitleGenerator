@@ -1,8 +1,13 @@
 """Data models for Voice Subtitle Generator."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from .audio_analyzer import AudioPosition
 
 
 class ProcessingStage(Enum):
@@ -50,6 +55,7 @@ class Segment:
     original_text: str
     translated_text: str = ""
     words: list[Word] = field(default_factory=list)
+    position: AudioPosition | None = None  # Binaural audio position (LEFT/CENTER/RIGHT)
 
     @property
     def duration(self) -> float:

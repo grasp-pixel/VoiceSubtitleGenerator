@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from .audio_analyzer import AudioPositionAnalyzer
 from .audio_loader import AudioLoader
 from .config import AppConfig, get_config, TRANSLATION_MODEL_PRESETS
 from .models import (
@@ -228,6 +229,9 @@ class SubtitlePipeline:
                         f"세그먼트 병합: {pre_merge_count}개 → {len(segments)}개",
                     )
                     logger.info(f"Merged segments: {pre_merge_count} -> {len(segments)}")
+
+            # Stage 2.5: Audio Position Analysis (for stereo/binaural audio)
+            self._analyze_audio_positions(audio_path, segments, callbacks)
 
             # Stage 3: Translation (skip if transcription only)
             if not skip_translation:
@@ -513,6 +517,59 @@ class SubtitlePipeline:
         """Notify log message."""
         if callbacks and callbacks.on_log:
             callbacks.on_log(message, level)
+
+    def _analyze_audio_positions(
+        self,
+        audio_path: str,
+        segments: list[Segment],
+        callbacks: PipelineCallbacks | None = None,
+    ) -> None:
+        """
+        Analyze audio positions for stereo/binaural audio.
+
+        Updates segment.position field based on L/R channel energy.
+
+        Args:
+            audio_path: Path to the audio file.
+            segments: List of segments to analyze.
+            callbacks: Optional callbacks for progress/logging.
+        """
+        if not segments:
+            return
+
+        analyzer = AudioPositionAnalyzer()
+
+        if not analyzer.load_audio(audio_path):
+            # Mono audio or failed to load - skip position analysis
+            logger.debug("Audio is mono or failed to load, skipping position analysis")
+            return
+
+        try:
+            self._notify_log(callbacks, "오디오 위치 분석 중...")
+
+            position_counts = {"left": 0, "center": 0, "right": 0}
+
+            for segment in segments:
+                result = analyzer.analyze_position(segment.start, segment.end)
+                segment.position = result.position
+
+                # Count positions for logging
+                pos_name = result.position.value
+                if pos_name in position_counts:
+                    position_counts[pos_name] += 1
+
+            # Log position distribution
+            left = position_counts["left"]
+            center = position_counts["center"]
+            right = position_counts["right"]
+            self._notify_log(
+                callbacks,
+                f"위치 분석 완료: 좌측 {left}개, 중앙 {center}개, 우측 {right}개",
+            )
+            logger.info(f"Position analysis: left={left}, center={center}, right={right}")
+
+        finally:
+            analyzer.cleanup()
 
     @property
     def is_ready(self) -> bool:
