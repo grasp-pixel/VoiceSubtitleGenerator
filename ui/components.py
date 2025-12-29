@@ -292,20 +292,23 @@ class FileDialogHelper:
             import logging
             log = logging.getLogger(__name__)
             try:
+                # UTI-based media file filter
+                type_filter = 'of type {"public.audio", "public.movie"}'
+
                 if allow_multiple:
-                    script = 'POSIX path of (choose file with multiple selections allowed)'
-                    # Returns paths separated by ", " for multiple files
+                    # AppleScript: get alias list first, then convert each to POSIX path
                     result = subprocess.run(
-                        ['osascript', '-e', f'set files to ({script})',
+                        ['osascript',
+                         '-e', f'set fileList to (choose file {type_filter} with multiple selections allowed)',
                          '-e', 'set output to ""',
-                         '-e', 'repeat with f in files',
-                         '-e', 'set output to output & POSIX path of f & linefeed',
+                         '-e', 'repeat with f in fileList',
+                         '-e', 'set output to output & (POSIX path of f) & linefeed',
                          '-e', 'end repeat',
                          '-e', 'return output'],
                         capture_output=True, text=True, timeout=300
                     )
                 else:
-                    script = 'POSIX path of (choose file)'
+                    script = f'POSIX path of (choose file {type_filter})'
                     result = subprocess.run(
                         ['osascript', '-e', script],
                         capture_output=True, text=True, timeout=300

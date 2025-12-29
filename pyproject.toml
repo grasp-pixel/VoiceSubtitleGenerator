@@ -22,7 +22,7 @@ dependencies = [
     "tqdm>=4.65.0",
     "static-ffmpeg>=2.13",
     "plyer>=2.1.0",
-    "pyobjus>=1.2.3",
+    "pyobjus>=1.2.3; sys_platform == 'darwin'",  # macOS only
 ]
 
 [project.optional-dependencies]

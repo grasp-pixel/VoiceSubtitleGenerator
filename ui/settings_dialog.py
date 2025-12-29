@@ -354,21 +354,6 @@ class SettingsDialog:
 
             dpg.add_separator()
 
-            # Thinking mode settings
-            dpg.add_text("생각 모드:", color=THEME.text_primary)
-            dpg.add_spacer(height=5)
-
-            self._inputs["enable_thinking"] = dpg.add_checkbox(
-                label="생각 모드 활성화 (think before translate)",
-                default_value=self._config.translation.enable_thinking,
-            )
-            dpg.add_text(
-                "모델이 번역 전 추론 과정을 거칩니다. Qwen3 등 지원 모델 전용.",
-                color=THEME.text_secondary,
-            )
-
-            dpg.add_separator()
-
             # Review settings
             dpg.add_text("검수 설정:", color=THEME.text_primary)
             dpg.add_spacer(height=5)
@@ -741,9 +726,6 @@ class SettingsDialog:
         self._config.translation.max_tokens = dpg.get_value(self._inputs["max_tokens"])
         self._config.translation.temperature = dpg.get_value(
             self._inputs["temperature"]
-        )
-        self._config.translation.enable_thinking = dpg.get_value(
-            self._inputs["enable_thinking"]
         )
         self._config.translation.enable_review = dpg.get_value(
             self._inputs["enable_review"]

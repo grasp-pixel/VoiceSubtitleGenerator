@@ -10,6 +10,7 @@ from pathlib import Path
 import dearpygui.dearpygui as dpg
 
 from src.config import ConfigManager
+from src.utils import get_app_path
 
 from .components import create_theme
 from .main_window import MainWindow
@@ -65,7 +66,7 @@ def setup_font() -> None:
     See: https://github.com/hoffstadt/DearPyGui/issues/1380
     """
     # Project fonts (Noto Sans CJK - supports Japanese, Korean, Chinese)
-    fonts_dir = Path(__file__).parent.parent / "fonts"
+    fonts_dir = get_app_path() / "fonts"
 
     # Font priority: Project font > System fonts
     font_paths = [

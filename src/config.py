@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from .utils import get_app_path
+
 
 # Supported Whisper models (large-v3 and turbo only)
 SUPPORTED_WHISPER_MODELS = ["large-v3", "large-v3-turbo"]
@@ -42,6 +44,8 @@ class TranslationModelPreset:
     description: str  # Short description
     vram_gb: float  # Estimated VRAM usage
     size_mb: int = 0  # File size in MB (for download progress)
+    prompt_file: str = "config/prompts/ja_to_ko.txt"  # Prompt template file
+    stop_tokens: list[str] = field(default_factory=lambda: ["<|im_end|>"])
 
     @property
     def download_url(self) -> str | None:
@@ -51,16 +55,18 @@ class TranslationModelPreset:
         return f"https://huggingface.co/{self.hf_repo}/resolve/main/{self.hf_file}"
 
 
-# Translation model preset (Qwen3-8B only)
+# Translation model presets
 TRANSLATION_MODEL_PRESETS: dict[str, TranslationModelPreset] = {
     "qwen3-8b": TranslationModelPreset(
         name="Qwen3-8B",
         filename="Qwen_Qwen3-8B-Q4_K_M.gguf",
         hf_repo="bartowski/Qwen_Qwen3-8B-GGUF",
         hf_file="Qwen_Qwen3-8B-Q4_K_M.gguf",
-        description="번역 전용 모델",
+        description="범용 번역 모델 (콘텐츠 필터 있음)",
         vram_gb=5.0,
         size_mb=5130,
+        prompt_file="config/prompts/ja_to_ko.txt",
+        stop_tokens=["<|im_end|>"],
     ),
 }
 
@@ -76,9 +82,6 @@ class TranslationConfig:
     max_tokens: int = 256
     temperature: float = 0.3
     prompt_template: str = "config/prompts/ja_to_ko.txt"
-
-    # Qwen3 thinking mode
-    enable_thinking: bool = True  # Allow model to think before translating
 
     # Review settings
     enable_review: bool = False  # Enable translation review/refinement
@@ -115,6 +118,13 @@ class TranslationConfig:
             "Translation: {translation}\n"
             "Corrected:"
         )
+
+    def get_stop_tokens(self) -> list[str]:
+        """Get stop tokens for current model preset."""
+        if self.model_preset in TRANSLATION_MODEL_PRESETS:
+            preset = TRANSLATION_MODEL_PRESETS[self.model_preset]
+            return preset.stop_tokens
+        return ["<|im_end|>"]  # Default for Qwen
 
 
 @dataclass
@@ -207,7 +217,10 @@ class AppConfig:
 class ConfigManager:
     """Configuration file manager."""
 
-    DEFAULT_CONFIG_PATH = "config/settings.yaml"
+    @staticmethod
+    def get_default_config_path() -> Path:
+        """Get default config path (works in PyInstaller bundle)."""
+        return get_app_path() / "config" / "settings.yaml"
 
     def __init__(self, config_path: str | None = None):
         """
@@ -216,7 +229,10 @@ class ConfigManager:
         Args:
             config_path: Path to config file. Uses default if not specified.
         """
-        self.config_path = Path(config_path or self.DEFAULT_CONFIG_PATH)
+        if config_path:
+            self.config_path = Path(config_path)
+        else:
+            self.config_path = self.get_default_config_path()
         self._config: AppConfig | None = None
 
     def load(self) -> AppConfig:

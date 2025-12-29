@@ -605,8 +605,8 @@ class MainWindow:
         if self._model_dialog:
             self._model_dialog.config = config
 
-        # Recreate pipeline with new config
-        if self._pipeline:
+        # Recreate pipeline with new config (only if not processing)
+        if self._pipeline and not self._is_processing:
             self._pipeline.cleanup()
             self._pipeline = None
 

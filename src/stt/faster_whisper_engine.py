@@ -70,10 +70,21 @@ class FasterWhisperEngine(STTEngine):
     @classmethod
     def from_config(cls, config: STTConfig) -> FasterWhisperEngine:
         """Create engine from config."""
+        device = config.device
+        compute_type = config.compute_type
+
+        # Auto-detect: fallback to CPU if CUDA is requested but not available
+        if device == "cuda" and not torch.cuda.is_available():
+            logger.warning("CUDA requested but not available, falling back to CPU")
+            device = "cpu"
+            # float16 is not supported on CPU, use int8 instead
+            if compute_type == "float16":
+                compute_type = "int8"
+
         return cls(
             model_size=config.model_size,
-            device=config.device,
-            compute_type=config.compute_type,
+            device=device,
+            compute_type=compute_type,
             beam_size=config.beam_size,
             vad_filter=config.vad_filter,
         )

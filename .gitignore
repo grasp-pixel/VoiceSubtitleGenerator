@@ -59,6 +59,7 @@ Thumbs.db
 # PyInstaller
 *.manifest
 *.spec
+!voice_subtitle_generator.spec
 
 # Test
 .pytest_cache/

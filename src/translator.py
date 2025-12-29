@@ -53,7 +53,6 @@ class Translator:
         prompt_template: str | None = None,
         review_prompt_template: str | None = None,
         enable_review: bool = False,
-        enable_thinking: bool = True,
     ):
         """
         Initialize translator.
@@ -65,7 +64,6 @@ class Translator:
             prompt_template: Translation prompt template with {text} placeholder.
             review_prompt_template: Review prompt template.
             enable_review: Enable translation review pass.
-            enable_thinking: Allow Qwen3 thinking mode.
         """
         self.model_path = model_path
         self.n_gpu_layers = n_gpu_layers
@@ -73,16 +71,13 @@ class Translator:
         self.prompt_template = prompt_template or self.DEFAULT_PROMPT
         self.review_prompt_template = review_prompt_template or self.DEFAULT_REVIEW_PROMPT
         self.enable_review = enable_review
-        self.enable_thinking = enable_thinking
 
         self._model: Llama | None = None
 
     def _get_stop_tokens(self) -> list[str]:
-        """Get stop tokens based on thinking mode setting."""
-        tokens = ["</subtitle>", "<|im_end|>"]
-        if not self.enable_thinking:
-            tokens.insert(0, "<think>")  # Block thinking at start
-        return tokens
+        """Get stop tokens for translation."""
+        # Using /no_think in prompt, so model won't output <think>
+        return ["<|im_end|>"]
 
     @classmethod
     def from_config(cls, config: TranslationConfig) -> "Translator":
@@ -94,7 +89,6 @@ class Translator:
             prompt_template=config.get_prompt_template(),
             review_prompt_template=config.get_review_prompt_template(),
             enable_review=config.enable_review,
-            enable_thinking=config.enable_thinking,
         )
 
     def load_model(self) -> None:
@@ -173,8 +167,9 @@ class Translator:
             # Log thinking process for debugging
             self._log_thinking(raw_result)
 
-            # Extract subtitle content
+            # Extract subtitle content and clean
             result = self._extract_subtitle(raw_result)
+            result = self._clean_translation(result)
 
             return result.strip()
 
@@ -227,8 +222,9 @@ class Translator:
             # Log thinking process for debugging
             self._log_thinking(raw_result)
 
-            # Extract subtitle content
+            # Extract subtitle content and clean
             result = self._extract_subtitle(raw_result)
+            result = self._clean_translation(result)
 
             # If review result is empty, return original translation
             if not result.strip():
@@ -341,18 +337,54 @@ class Translator:
         Returns:
             str: Content inside subtitle tag, or cleaned text if no tag found.
         """
+        # First, remove any <think>...</think> blocks
+        cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+
+        # Also remove incomplete <think> tags (started but not closed)
+        cleaned = re.sub(r'<think>.*$', '', cleaned, flags=re.DOTALL)
+
         # Try to extract from <subtitle> tag
-        match = re.search(r'<subtitle>(.*?)</subtitle>', text, re.DOTALL)
+        match = re.search(r'<subtitle>(.*?)</subtitle>', cleaned, re.DOTALL)
         if match:
             return match.group(1).strip()
 
         # Fallback: try incomplete tag (</subtitle> might be in stop tokens)
-        match = re.search(r'<subtitle>(.*?)$', text, re.DOTALL)
+        match = re.search(r'<subtitle>(.*?)$', cleaned, re.DOTALL)
         if match:
             return match.group(1).strip()
 
-        # No tag found - return original text for legacy handling
-        return text.strip()
+        # No tag found - return cleaned text
+        return cleaned.strip()
+
+    def _clean_translation(self, text: str) -> str:
+        """
+        Final cleanup of translation result.
+
+        Removes any remaining XML-like tags and normalizes whitespace.
+
+        Args:
+            text: Translation text to clean.
+
+        Returns:
+            str: Cleaned translation text.
+        """
+        if not text:
+            return text
+
+        # Remove any remaining XML-like tags
+        cleaned = re.sub(r'<[^>]+>', '', text)
+
+        # Remove /no_think token that may leak into output
+        cleaned = cleaned.replace('/no_think', '').replace('/ no_think', '')
+
+        # Normalize whitespace (but preserve intentional line breaks for subtitles)
+        cleaned = re.sub(r'[ \t]+', ' ', cleaned)
+
+        # Remove leading/trailing whitespace from each line
+        lines = [line.strip() for line in cleaned.split('\n')]
+        cleaned = '\n'.join(line for line in lines if line)
+
+        return cleaned.strip()
 
     def _log_thinking(self, text: str) -> None:
         """
