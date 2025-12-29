@@ -87,16 +87,24 @@ class TranslationConfig:
     enable_review: bool = False  # Enable translation review/refinement
     review_prompt_template: str = "config/prompts/review.txt"
 
-    def get_model_path(self, models_dir: str = "./models") -> str:
+    def get_model_path(self, models_dir: str = "models") -> str:
         """Get full model path based on preset."""
+        from .utils import get_resource_path
+
         if self.model_preset in TRANSLATION_MODEL_PRESETS:
             preset = TRANSLATION_MODEL_PRESETS[self.model_preset]
-            return str(Path(models_dir) / preset.filename)
+            return str(get_resource_path(models_dir) / preset.filename)
+        # For custom model path, also resolve relative to app root
+        model_path = Path(self.model_path)
+        if not model_path.is_absolute():
+            return str(get_resource_path(self.model_path))
         return self.model_path
 
     def get_prompt_template(self) -> str:
         """Load prompt template from file."""
-        path = Path(self.prompt_template)
+        from .utils import get_resource_path
+
+        path = get_resource_path(self.prompt_template)
         if path.exists():
             return path.read_text(encoding="utf-8")
         # Default fallback prompt
@@ -108,7 +116,9 @@ class TranslationConfig:
 
     def get_review_prompt_template(self) -> str:
         """Load review prompt template from file."""
-        path = Path(self.review_prompt_template)
+        from .utils import get_resource_path
+
+        path = get_resource_path(self.review_prompt_template)
         if path.exists():
             return path.read_text(encoding="utf-8")
         # Default fallback

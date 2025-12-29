@@ -1,13 +1,16 @@
 """Audio loading and preprocessing for Voice Subtitle Generator."""
 
+import logging
+import subprocess
 import tempfile
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-from pydub import AudioSegment
 
 from .models import AudioInfo
+
+logger = logging.getLogger(__name__)
 
 
 class AudioFormatError(Exception):
@@ -70,30 +73,56 @@ class AudioLoader:
                 f"Supported: {', '.join(self.SUPPORTED_FORMATS)}"
             )
 
-        # Load and convert using pydub
+        # Use ffmpeg directly to avoid pydub encoder bugs
         try:
-            audio = AudioSegment.from_file(str(path))
+            samples = self._load_with_ffmpeg(str(path))
         except Exception as e:
             raise AudioFormatError(f"Failed to load audio: {e}")
 
-        # Convert to mono
-        if audio.channels > 1:
-            audio = audio.set_channels(1)
-
-        # Resample if needed
-        if audio.frame_rate != self.target_sample_rate:
-            audio = audio.set_frame_rate(self.target_sample_rate)
-
-        # Normalize
+        # Normalize audio levels
         if self.normalize:
-            audio = self._normalize_audio(audio)
+            samples = self._normalize_samples(samples)
 
-        # Convert to numpy array
-        samples = np.array(audio.get_array_of_samples(), dtype=np.float32)
+        return samples
 
-        # Normalize to [-1, 1] range
-        max_val = float(2 ** (audio.sample_width * 8 - 1))
-        samples = samples / max_val
+    def _load_with_ffmpeg(self, audio_path: str) -> np.ndarray:
+        """
+        Load audio using ffmpeg subprocess.
+
+        Args:
+            audio_path: Path to audio file.
+
+        Returns:
+            np.ndarray: Audio as float32 mono array.
+        """
+        # ffmpeg command: convert to 16-bit PCM WAV, mono, target sample rate
+        cmd = [
+            "ffmpeg",
+            "-i", audio_path,
+            "-vn",  # No video
+            "-ac", "1",  # Mono
+            "-ar", str(self.target_sample_rate),  # Sample rate
+            "-acodec", "pcm_s16le",  # 16-bit PCM
+            "-f", "wav",  # WAV format
+            "pipe:1",  # Output to stdout
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr.decode("utf-8", errors="replace")
+            raise AudioFormatError(f"ffmpeg failed: {stderr}")
+        except FileNotFoundError:
+            raise AudioFormatError("ffmpeg not found. Please install ffmpeg.")
+
+        # Read WAV data from stdout
+        import io
+        wav_data = io.BytesIO(result.stdout)
+        samples, _ = sf.read(wav_data, dtype="float32")
 
         return samples
 
@@ -126,7 +155,7 @@ class AudioLoader:
 
     def get_info(self, audio_path: str) -> AudioInfo:
         """
-        Get audio file metadata.
+        Get audio file metadata using ffprobe.
 
         Args:
             audio_path: Path to audio file.
@@ -140,15 +169,44 @@ class AudioLoader:
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
         try:
-            audio = AudioSegment.from_file(str(path))
-        except Exception as e:
-            raise AudioFormatError(f"Failed to load audio: {e}")
+            import json
+
+            cmd = [
+                "ffprobe",
+                "-v", "quiet",
+                "-print_format", "json",
+                "-show_format",
+                "-show_streams",
+                str(path),
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, check=True)
+            data = json.loads(result.stdout)
+
+            # Find audio stream
+            audio_stream = None
+            for stream in data.get("streams", []):
+                if stream.get("codec_type") == "audio":
+                    audio_stream = stream
+                    break
+
+            if audio_stream is None:
+                raise AudioFormatError("No audio stream found")
+
+            duration = float(data.get("format", {}).get("duration", 0))
+            sample_rate = int(audio_stream.get("sample_rate", 0))
+            channels = int(audio_stream.get("channels", 0))
+
+        except subprocess.CalledProcessError as e:
+            raise AudioFormatError(f"ffprobe failed: {e}")
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            raise AudioFormatError(f"Failed to parse audio info: {e}")
 
         return AudioInfo(
             path=str(path),
-            duration=len(audio) / 1000.0,  # Convert ms to seconds
-            sample_rate=audio.frame_rate,
-            channels=audio.channels,
+            duration=duration,
+            sample_rate=sample_rate,
+            channels=channels,
             format=path.suffix.lower().lstrip("."),
         )
 
@@ -171,7 +229,7 @@ class AudioLoader:
         end: float,
     ) -> np.ndarray:
         """
-        Extract a segment from audio file.
+        Extract a segment from audio file using ffmpeg.
 
         Args:
             audio_path: Path to audio file.
@@ -186,55 +244,57 @@ class AudioLoader:
         if not path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
+        duration = end - start
+
+        cmd = [
+            "ffmpeg",
+            "-ss", str(start),
+            "-i", str(path),
+            "-t", str(duration),
+            "-vn",
+            "-ac", "1",
+            "-ar", str(self.target_sample_rate),
+            "-acodec", "pcm_s16le",
+            "-f", "wav",
+            "pipe:1",
+        ]
+
         try:
-            audio = AudioSegment.from_file(str(path))
-        except Exception as e:
-            raise AudioFormatError(f"Failed to load audio: {e}")
+            result = subprocess.run(cmd, capture_output=True, check=True)
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr.decode("utf-8", errors="replace")
+            raise AudioFormatError(f"ffmpeg failed: {stderr}")
 
-        # Convert to milliseconds
-        start_ms = int(start * 1000)
-        end_ms = int(end * 1000)
-
-        # Extract segment
-        segment = audio[start_ms:end_ms]
-
-        # Convert to mono and resample
-        if segment.channels > 1:
-            segment = segment.set_channels(1)
-        if segment.frame_rate != self.target_sample_rate:
-            segment = segment.set_frame_rate(self.target_sample_rate)
-
-        # Convert to numpy
-        samples = np.array(segment.get_array_of_samples(), dtype=np.float32)
-        max_val = float(2 ** (segment.sample_width * 8 - 1))
-        samples = samples / max_val
+        import io
+        wav_data = io.BytesIO(result.stdout)
+        samples, _ = sf.read(wav_data, dtype="float32")
 
         return samples
 
-    def _normalize_audio(self, audio: AudioSegment) -> AudioSegment:
+    def _normalize_samples(self, samples: np.ndarray) -> np.ndarray:
         """
-        Normalize audio levels.
+        Normalize audio samples to target level.
 
         Args:
-            audio: Input audio segment.
+            samples: Audio samples as float32 array.
 
         Returns:
-            AudioSegment: Normalized audio.
+            np.ndarray: Normalized audio samples.
         """
-        # Calculate target dBFS (decibels relative to full scale)
-        target_dbfs = -20.0
+        # Calculate RMS
+        rms = np.sqrt(np.mean(samples**2))
 
-        # Get current dBFS
-        current_dbfs = audio.dBFS
-
-        # Calculate gain needed
-        if current_dbfs != float("-inf"):
-            gain = target_dbfs - current_dbfs
+        if rms > 0:
+            # Target RMS level (corresponds to about -20 dBFS)
+            target_rms = 0.1
+            gain = target_rms / rms
             # Limit gain to prevent clipping
-            gain = min(gain, 20.0)
-            audio = audio.apply_gain(gain)
+            gain = min(gain, 10.0)
+            samples = samples * gain
+            # Clip to [-1, 1]
+            samples = np.clip(samples, -1.0, 1.0)
 
-        return audio
+        return samples
 
     def cleanup(self) -> None:
         """Clean up temporary files."""

@@ -2,14 +2,13 @@
 name = "voice-subtitle-generator"
 version = "0.1.0"
 description = "Japanese audio to Korean subtitle generator"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     # STT (Speech-to-Text)
     "faster-whisper>=1.0.0",
     # LLM Translation
     "llama-cpp-python>=0.2.0",
     # Audio Processing
-    "pydub>=0.25.0",
     "soundfile>=0.12.0",
     "torchaudio>=2.0.0",
     # Subtitle Generation
@@ -22,6 +21,7 @@ dependencies = [
     "tqdm>=4.65.0",
     "static-ffmpeg>=2.13",
     "plyer>=2.1.0",
+    "pywin32>=306; sys_platform == 'win32'",  # Windows file dialog
     "pyobjus>=1.2.3; sys_platform == 'darwin'",  # macOS only
 ]
 
