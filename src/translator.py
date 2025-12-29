@@ -38,21 +38,12 @@ class Translator:
         "Korean:"
     )
 
-    DEFAULT_REVIEW_PROMPT = (
-        "Review the Korean translation and fix any errors.\n"
-        "Original: {original}\n"
-        "Translation: {translation}\n"
-        "Corrected:"
-    )
-
     def __init__(
         self,
         model_path: str,
         n_gpu_layers: int = -1,
         n_ctx: int = 4096,
         prompt_template: str | None = None,
-        review_prompt_template: str | None = None,
-        enable_review: bool = False,
     ):
         """
         Initialize translator.
@@ -62,15 +53,11 @@ class Translator:
             n_gpu_layers: Number of layers to offload to GPU (-1 for all).
             n_ctx: Context size.
             prompt_template: Translation prompt template with {text} placeholder.
-            review_prompt_template: Review prompt template.
-            enable_review: Enable translation review pass.
         """
         self.model_path = model_path
         self.n_gpu_layers = n_gpu_layers
         self.n_ctx = n_ctx
         self.prompt_template = prompt_template or self.DEFAULT_PROMPT
-        self.review_prompt_template = review_prompt_template or self.DEFAULT_REVIEW_PROMPT
-        self.enable_review = enable_review
 
         self._model: Llama | None = None
 
@@ -87,8 +74,6 @@ class Translator:
             n_gpu_layers=config.n_gpu_layers,
             n_ctx=config.n_ctx,
             prompt_template=config.get_prompt_template(),
-            review_prompt_template=config.get_review_prompt_template(),
-            enable_review=config.enable_review,
         )
 
     def load_model(self) -> None:
@@ -186,65 +171,6 @@ class Translator:
             logger.error(f"Translation failed: {e}")
             raise TranslationError(f"Translation failed: {e}") from e
 
-    def review_translation(
-        self,
-        original: str,
-        translation: str,
-        max_tokens: int = 256,
-        temperature: float = 0.2,
-    ) -> str:
-        """
-        Review and fix a translation.
-
-        Args:
-            original: Original Japanese text.
-            translation: Korean translation to review.
-            max_tokens: Maximum tokens to generate.
-            temperature: Sampling temperature (lower for more consistent output).
-
-        Returns:
-            str: Corrected Korean translation.
-        """
-        if self._model is None:
-            self.load_model()
-
-        if not translation.strip():
-            return ""
-
-        # Build review prompt
-        prompt = self.review_prompt_template.format(
-            original=original.strip(),
-            translation=translation.strip(),
-        )
-
-        try:
-            response = self._model(
-                prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stop=self._get_stop_tokens(),
-                echo=False,
-            )
-
-            raw_result = response["choices"][0]["text"].strip()
-
-            # Log thinking process for debugging
-            self._log_thinking(raw_result)
-
-            # Extract subtitle content and clean
-            result = self._extract_subtitle(raw_result)
-            result = self._clean_translation(result)
-
-            # If review result is empty, return original translation
-            if not result.strip():
-                return translation
-
-            return result.strip()
-
-        except Exception as e:
-            logger.warning(f"Review failed, using original translation: {e}")
-            return translation
-
     def translate_batch(
         self,
         texts: list[str],
@@ -291,7 +217,6 @@ class Translator:
         max_tokens: int = 256,
         temperature: float = 0.3,
         progress_callback: ProgressCallback | None = None,
-        review_callback: ProgressCallback | None = None,
     ) -> list[Segment]:
         """
         Translate segments in place.
@@ -301,7 +226,6 @@ class Translator:
             max_tokens: Maximum tokens per translation.
             temperature: Sampling temperature.
             progress_callback: Progress callback for translation phase.
-            review_callback: Progress callback for review phase.
 
         Returns:
             list[Segment]: Segments with translated_text filled.
@@ -317,22 +241,6 @@ class Translator:
 
         for segment, translation in zip(segments, translations):
             segment.translated_text = translation
-
-        # Review pass if enabled
-        if self.enable_review:
-            total = len(segments)
-            for i, segment in enumerate(segments):
-                if segment.original_text and segment.translated_text:
-                    reviewed = self.review_translation(
-                        original=segment.original_text,
-                        translation=segment.translated_text,
-                        max_tokens=max_tokens,
-                        temperature=0.2,  # Lower temp for more consistent review
-                    )
-                    segment.translated_text = reviewed
-
-                if review_callback:
-                    review_callback((i + 1) / total)
 
         return segments
 

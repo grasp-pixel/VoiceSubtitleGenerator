@@ -239,7 +239,7 @@ class ProcessingPanel:
     # Sub-stages for detailed profiling
     SUB_STAGES = {
         "transcribing": [("whisper", "Whisper 추론"), ("vad", "VAD 처리")],
-        "translating": [("translate", "번역"), ("review", "검수")],
+        "translating": [("translate", "번역")],
     }
 
     def __init__(self, parent: int | str):

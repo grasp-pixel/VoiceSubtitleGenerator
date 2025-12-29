@@ -20,18 +20,16 @@ translation:
   max_tokens: 256
   temperature: 0.30000001192092896
   prompt_template: config/prompts/ja_to_ko.txt
-  enable_review: false
-  review_prompt_template: config/prompts/review.txt
 subtitle:
-  default_format: srt
+  default_format: ass
   include_original: true
   ass:
     video_width: 1920
     video_height: 1080
     default_font: Noto Sans KR
-    default_size: 48
-    original_font: Pretendard
-    original_size: 36
+    default_size: 72
+    original_font: Noto Sans JP
+    original_size: 64
     outline_width: 2
     shadow_depth: 1
     enable_position_styling: true

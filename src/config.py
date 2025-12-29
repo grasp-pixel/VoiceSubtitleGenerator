@@ -83,10 +83,6 @@ class TranslationConfig:
     temperature: float = 0.3
     prompt_template: str = "config/prompts/ja_to_ko.txt"
 
-    # Review settings
-    enable_review: bool = False  # Enable translation review/refinement
-    review_prompt_template: str = "config/prompts/review.txt"
-
     def get_model_path(self, models_dir: str = "models") -> str:
         """Get full model path based on preset."""
         from .utils import get_resource_path
@@ -114,21 +110,6 @@ class TranslationConfig:
             "Korean:"
         )
 
-    def get_review_prompt_template(self) -> str:
-        """Load review prompt template from file."""
-        from .utils import get_resource_path
-
-        path = get_resource_path(self.review_prompt_template)
-        if path.exists():
-            return path.read_text(encoding="utf-8")
-        # Default fallback
-        return (
-            "Review and fix the Korean translation.\n"
-            "Original: {original}\n"
-            "Translation: {translation}\n"
-            "Corrected:"
-        )
-
     def get_stop_tokens(self) -> list[str]:
         """Get stop tokens for current model preset."""
         if self.model_preset in TRANSLATION_MODEL_PRESETS:
@@ -151,6 +132,7 @@ class SubtitleASSConfig:
     shadow_depth: float = 1.0
     # Position-based styling (stereo audio)
     enable_position_styling: bool = True  # Enable left/right alignment based on audio
+    position_threshold: float = 0.3  # Balance threshold for L/R detection (lower = more sensitive)
 
 
 @dataclass
@@ -314,7 +296,11 @@ class ConfigManager:
             else:
                 speech_config = SpeechConfig()
 
-        translation_config = TranslationConfig(**data.get("translation", {}))
+        translation_data = data.get("translation", {})
+        # Remove legacy review fields
+        translation_data.pop("enable_review", None)
+        translation_data.pop("review_prompt_template", None)
+        translation_config = TranslationConfig(**translation_data)
 
         subtitle_data = data.get("subtitle", {})
         ass_data = subtitle_data.pop("ass", {}) if "ass" in subtitle_data else {}
@@ -371,8 +357,6 @@ class ConfigManager:
                 "max_tokens": config.translation.max_tokens,
                 "temperature": config.translation.temperature,
                 "prompt_template": config.translation.prompt_template,
-                "enable_review": config.translation.enable_review,
-                "review_prompt_template": config.translation.review_prompt_template,
             },
             "subtitle": {
                 "default_format": config.subtitle.default_format,
@@ -387,6 +371,7 @@ class ConfigManager:
                     "outline_width": config.subtitle.ass.outline_width,
                     "shadow_depth": config.subtitle.ass.shadow_depth,
                     "enable_position_styling": config.subtitle.ass.enable_position_styling,
+                    "position_threshold": config.subtitle.ass.position_threshold,
                 },
             },
             "processing": {

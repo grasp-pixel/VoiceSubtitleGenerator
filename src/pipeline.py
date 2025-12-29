@@ -90,8 +90,6 @@ class SubtitlePipeline:
                 n_gpu_layers=self.config.translation.n_gpu_layers,
                 n_ctx=self.config.translation.n_ctx,
                 prompt_template=self.config.translation.get_prompt_template(),
-                review_prompt_template=self.config.translation.get_review_prompt_template(),
-                enable_review=self.config.translation.enable_review,
             )
             self._translator.load_model()
         else:
@@ -246,23 +244,11 @@ class SubtitlePipeline:
                         n_gpu_layers=self.config.translation.n_gpu_layers,
                         n_ctx=self.config.translation.n_ctx,
                         prompt_template=self.config.translation.get_prompt_template(),
-                        review_prompt_template=self.config.translation.get_review_prompt_template(),
-                        enable_review=self.config.translation.enable_review,
                     )
                     self._translator.load_model()
                     self._notify_log(callbacks, "번역 모델 로딩 완료", "success")
 
                 self._notify_stage(callbacks, ProcessingStage.TRANSLATING)
-
-                # Adjust progress range based on whether review is enabled
-                enable_review = self.config.translation.enable_review
-                if enable_review:
-                    # Translation: 50% -> 70%, Review: 70% -> 90%
-                    trans_start, trans_end = 0.5, 0.7
-                    review_start, review_end = 0.7, 0.9
-                else:
-                    # Translation: 50% -> 90%
-                    trans_start, trans_end = 0.5, 0.9
 
                 self._notify_log(callbacks, f"번역 시작 (0/{len(segments)})...")
 
@@ -270,7 +256,7 @@ class SubtitlePipeline:
 
                 def translation_progress(p: float):
                     self._notify_progress(
-                        callbacks, trans_start + p * (trans_end - trans_start)
+                        callbacks, 0.5 + p * 0.4  # 50% -> 90%
                     )
                     new_count = int(p * len(segments))
                     if new_count > translated_count[0]:
@@ -280,36 +266,14 @@ class SubtitlePipeline:
                                 callbacks, f"번역 진행 중... ({new_count}/{len(segments)})"
                             )
 
-                reviewed_count = [0]
-
-                def review_progress(p: float):
-                    self._notify_progress(
-                        callbacks, review_start + p * (review_end - review_start)
-                    )
-                    new_count = int(p * len(segments))
-                    if new_count > reviewed_count[0]:
-                        reviewed_count[0] = new_count
-                        if new_count % 10 == 0 or new_count == len(segments):
-                            self._notify_log(
-                                callbacks, f"검수 진행 중... ({new_count}/{len(segments)})"
-                            )
-
-                # Sync enable_review from config to translator
-                # (config may have changed after pipeline initialization)
-                self._translator.enable_review = enable_review
-
                 self._translator.translate_segments(
                     segments,
                     max_tokens=self.config.translation.max_tokens,
                     temperature=self.config.translation.temperature,
                     progress_callback=translation_progress,
-                    review_callback=review_progress if enable_review else None,
                 )
 
-                if enable_review:
-                    self._notify_log(callbacks, "번역 및 검수 완료", "success")
-                else:
-                    self._notify_log(callbacks, "번역 완료", "success")
+                self._notify_log(callbacks, "번역 완료", "success")
                 logger.info("Translation complete")
             else:
                 # Skip translation - just update progress
@@ -478,9 +442,6 @@ class SubtitlePipeline:
 
         self._notify_stage(callbacks, ProcessingStage.TRANSLATING)
 
-        # Sync enable_review from config to translator
-        self._translator.enable_review = self.config.translation.enable_review
-
         self._translator.translate_segments(
             segments,
             progress_callback=lambda p: self._notify_progress(callbacks, p),
@@ -537,7 +498,11 @@ class SubtitlePipeline:
         if not segments:
             return
 
-        analyzer = AudioPositionAnalyzer()
+        threshold = self.config.subtitle.ass.position_threshold
+        analyzer = AudioPositionAnalyzer(
+            left_threshold=-threshold,
+            right_threshold=threshold,
+        )
 
         if not analyzer.load_audio(audio_path):
             # Mono audio or failed to load - skip position analysis

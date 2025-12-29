@@ -358,25 +358,6 @@ class SettingsDialog:
                     format="%.2f",
                 )
 
-            dpg.add_separator()
-
-            # Review settings
-            dpg.add_text("검수 설정:", color=THEME.text_primary)
-            dpg.add_spacer(height=5)
-
-            self._inputs["enable_review"] = dpg.add_checkbox(
-                label="번역 검수 활성화 (2-pass)",
-                default_value=self._config.translation.enable_review,
-            )
-            dpg.add_text(
-                "원문과 번역을 비교하여 오역/누락을 교정합니다.",
-                color=THEME.text_secondary,
-            )
-            dpg.add_text(
-                "주의: 처리 시간이 약 2배 증가합니다.",
-                color=THEME.warning,
-            )
-
     def _build_prompt_tab(self) -> None:
         """Build prompt editing tab."""
         with dpg.tab(label="프롬프트"):
@@ -528,6 +509,20 @@ class SettingsDialog:
             )
             dpg.add_text(
                 "좌측 오디오 → 좌측 정렬, 우측 오디오 → 우측 정렬",
+                color=THEME.text_secondary,
+            )
+
+            with dpg.group(horizontal=True):
+                dpg.add_text("위치 감지 민감도:", color=THEME.text_secondary)
+                self._inputs["position_threshold"] = dpg.add_slider_float(
+                    default_value=self._config.subtitle.ass.position_threshold,
+                    min_value=0.05,
+                    max_value=0.5,
+                    width=150,
+                    format="%.2f",
+                )
+            dpg.add_text(
+                "값이 낮을수록 민감 (기본: 0.30)",
                 color=THEME.text_secondary,
             )
 
@@ -827,9 +822,6 @@ class SettingsDialog:
         self._config.translation.temperature = dpg.get_value(
             self._inputs["temperature"]
         )
-        self._config.translation.enable_review = dpg.get_value(
-            self._inputs["enable_review"]
-        )
 
         # Save prompt file and update config path
         selected_prompt_name = dpg.get_value(self._inputs["prompt_file"])
@@ -879,6 +871,9 @@ class SettingsDialog:
         )
         self._config.subtitle.ass.enable_position_styling = dpg.get_value(
             self._inputs["enable_position_styling"]
+        )
+        self._config.subtitle.ass.position_threshold = dpg.get_value(
+            self._inputs["position_threshold"]
         )
 
         # Save to file
