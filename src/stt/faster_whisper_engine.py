@@ -6,6 +6,7 @@ import gc
 import logging
 from typing import TYPE_CHECKING
 
+import ctranslate2
 import torch
 from faster_whisper import WhisperModel
 
@@ -74,12 +75,19 @@ class FasterWhisperEngine(STTEngine):
         compute_type = config.compute_type
 
         # Auto-detect: fallback to CPU if CUDA is requested but not available
-        if device == "cuda" and not torch.cuda.is_available():
-            logger.warning("CUDA requested but not available, falling back to CPU")
+        # Use CTranslate2's CUDA detection since faster-whisper is CTranslate2-based
+        cuda_available = ctranslate2.get_cuda_device_count() > 0
+        if device == "cuda" and not cuda_available:
+            logger.warning(
+                "CUDA requested but CTranslate2 CUDA not available, "
+                "falling back to CPU"
+            )
             device = "cpu"
             # float16 is not supported on CPU, use int8 instead
             if compute_type == "float16":
                 compute_type = "int8"
+        elif device == "cuda" and cuda_available:
+            logger.info(f"CTranslate2 CUDA available: {ctranslate2.get_cuda_device_count()} device(s)")
 
         return cls(
             model_size=config.model_size,
