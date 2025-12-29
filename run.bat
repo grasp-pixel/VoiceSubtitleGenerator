@@ -119,14 +119,14 @@ if %ERRORLEVEL% equ 0 (
             set "CMAKE_GENERATOR=Ninja"
             set "CUDACXX=!CUDA_PATH!\bin\nvcc.exe"
 
-            .venv\Scripts\pip.exe uninstall llama-cpp-python -y >nul 2>&1
-            .venv\Scripts\pip.exe install llama-cpp-python --no-cache-dir --force-reinstall
+            uv pip uninstall llama-cpp-python >nul 2>&1
+            uv pip install llama-cpp-python --no-cache-dir --reinstall
 
             if !ERRORLEVEL! neq 0 (
                 echo.
                 echo [WARNING] CUDA build failed. Falling back to CPU mode.
                 echo           Check README.md for prerequisites.
-                .venv\Scripts\pip.exe install llama-cpp-python --no-cache-dir
+                uv pip install llama-cpp-python --no-cache-dir
             ) else (
                 echo.
                 echo       CUDA build complete!
