@@ -141,12 +141,10 @@ class MainWindow:
                 dpg.add_menu_item(
                     label="파일 추가...",
                     callback=self._on_add_files,
-                    shortcut="Ctrl+O",
                 )
                 dpg.add_menu_item(
                     label="폴더 추가...",
                     callback=self._on_add_folder,
-                    shortcut="Ctrl+Shift+O",
                 )
                 dpg.add_separator()
                 dpg.add_menu_item(
@@ -163,18 +161,15 @@ class MainWindow:
                 dpg.add_menu_item(
                     label="자막 생성",
                     callback=self._on_start_transcription,
-                    shortcut="F5",
                 )
                 dpg.add_menu_item(
                     label="번역자막 생성",
                     callback=self._on_start_translation,
-                    shortcut="F6",
                 )
                 dpg.add_separator()
                 dpg.add_menu_item(
                     label="취소",
                     callback=self._on_cancel_processing,
-                    shortcut="Esc",
                 )
 
             with dpg.menu(label="설정"):
